@@ -30,6 +30,7 @@ def main():
         "usr/bin/forkop-servicecheck",
         "usr/lib/forkop-servicecheck/probe.uc",
         "usr/lib/forkop-servicecheck/xhttp_hotfix.sh",
+        "usr/lib/forkop-servicecheck/icmp_tproxy_hotfix.sh",
         "usr/share/forkop-servicecheck/profiles.json",
         "usr/share/forkop-servicecheck/version",
         "www/luci-static/resources/view/forkop/servicecheck-v110.js",

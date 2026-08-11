@@ -23,6 +23,7 @@ const NETNS_NAME = getenv("FORKOP_SC_NETNS") || "fkpsc";
 const NETNS_VETH_HOST = "fkpsc0";
 const NETNS_VETH_PEER = "fkpsc1";
 const XHTTP_PATCH = "/usr/lib/forkop-servicecheck/xhttp_hotfix.sh";
+const ICMP_TPROXY_PATCH = "/usr/lib/forkop-servicecheck/icmp_tproxy_hotfix.sh";
 
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const DNS_TIMEOUT = 3;
@@ -116,6 +117,16 @@ function xhttp_patch() {
     return result.status;
 }
 
+function icmp_tproxy_patch() {
+    if (fs.stat(ICMP_TPROXY_PATCH) == null) {
+        write_json({ success: false, message: "ICMP/TProxy-патч не установлен в пакет" });
+        return 1;
+    }
+    let result = capture_args([ "sh", ICMP_TPROXY_PATCH ], true);
+    write_json({ success: result.status == 0, code: result.status, output: trim(as_string(result.output)) });
+    return result.status;
+}
+
 function available_fixes() {
     return [
         {
@@ -123,6 +134,12 @@ function available_fixes() {
             title: "Фикс xHTTP импорта подписок",
             description: "Исправляет импорт дополнительных полей xHTTP из подписок в parser.uc Forkop.",
             risk: "Создаётся резервная копия parser.uc; патч проверяется через ucode до замены."
+        },
+        {
+            id: "icmp_tproxy",
+            title: "Фикс ping/ICMP для правил подсетей",
+            description: "Ограничивает метку TProxy в priority_rules протоколами TCP и UDP, чтобы ICMP не уходил в локальный TProxy-сокет.",
+            risk: "Создаётся резервная копия nft/apply.uc; патч проверяется через ucode. Работающий Forkop перезапускается, live-правила проверяются, а при ошибке выполняется откат."
         }
     ];
 }
@@ -135,6 +152,8 @@ function list_fixes() {
 function run_fix(id) {
     if (as_string(id) == "xhttp_import")
         return xhttp_patch();
+    if (as_string(id) == "icmp_tproxy")
+        return icmp_tproxy_patch();
     write_json({ success: false, message: "неизвестный фикс Forkop" });
     return 1;
 }
@@ -1313,6 +1332,8 @@ else if (mode == "netns-teardown") {
 }
 else if (mode == "xhttp-patch")
     exit(run_fix("xhttp_import"));
+else if (mode == "icmp-tproxy-patch")
+    exit(run_fix("icmp_tproxy"));
 else {
     warn("Unknown mode: ", mode, "\n");
     exit(1);

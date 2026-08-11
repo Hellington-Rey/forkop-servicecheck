@@ -41,6 +41,8 @@ function show_help() {
     print("    start IDS [MODE] [IP]   Запустить проверку в фоне, вернуть job_id\n");
     print("    status JOB_ID           Показать состояние фоновой проверки\n");
     print("    cleanup                 Удалить устаревшие задания\n");
+    print("    fixes                   Показать разрешённые исправления Forkop\n");
+    print("    fix ID                  Применить исправление Forkop из белого списка\n");
     print("    netns_teardown          Снести временный network namespace\n\n");
     print("IDS  - список id сервисов через запятую либо 'all'\n");
     print("MODE - router (по умолчанию) или netns\n");
@@ -61,6 +63,7 @@ function command_spec(command) {
         status: [ "status", 1 ],
         cleanup: [ "cleanup", 0 ],
         xhttp_patch: [ "xhttp-patch", 0 ],
+        icmp_tproxy_patch: [ "icmp-tproxy-patch", 0 ],
         netns_teardown: [ "netns-teardown", 0 ]
     };
 

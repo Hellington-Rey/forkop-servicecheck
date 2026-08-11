@@ -182,6 +182,7 @@ mkdir -p /usr/share/luci/menu.d /usr/share/rpcd/acl.d
 cp -f "$TMP_DIR/usr/bin/forkop-servicecheck" "$BIN_PATH"
 cp -f "$TMP_DIR/usr/lib/forkop-servicecheck/probe.uc" "$LIB_DIR/probe.uc"
 cp -f "$TMP_DIR/usr/lib/forkop-servicecheck/xhttp_hotfix.sh" "$LIB_DIR/xhttp_hotfix.sh"
+cp -f "$TMP_DIR/usr/lib/forkop-servicecheck/icmp_tproxy_hotfix.sh" "$LIB_DIR/icmp_tproxy_hotfix.sh"
 cp -f "$TMP_DIR/usr/share/forkop-servicecheck/profiles.json" "$SHARE_DIR/profiles.json"
 cp -f "$TMP_DIR/www/luci-static/resources/view/forkop/servicecheck-v110.js" "$VIEW_FILE"
 rm -f "$LEGACY_VIEW_FILE" "$BROKEN_VIEW_FILE"
@@ -189,7 +190,7 @@ cp -f "$TMP_DIR/usr/share/luci/menu.d/luci-app-forkop-servicecheck.json" "$MENU_
 cp -f "$TMP_DIR/usr/share/rpcd/acl.d/luci-app-forkop-servicecheck.json" "$ACL_FILE"
 
 chmod 0755 "$BIN_PATH"
-chmod 0755 "$LIB_DIR/xhttp_hotfix.sh"
+chmod 0755 "$LIB_DIR/xhttp_hotfix.sh" "$LIB_DIR/icmp_tproxy_hotfix.sh"
 chmod 0644 "$LIB_DIR/probe.uc" "$SHARE_DIR/profiles.json" "$VIEW_FILE" "$MENU_FILE" "$ACL_FILE"
 printf '%s\n' "$VERSION" > "$VERSION_FILE"
 

@@ -15,6 +15,7 @@ LuCI-модуль для OpenWrt, который проверяет доступ
 - Фоновый запуск с отображением прогресса.
 - Классификация причин ошибок: DNS failure, timeout, TCP refused, TLS reset, ошибки сертификата, HTTP 403/451 и медленные соединения.
 - Кнопка **«Починить импорт xHTTP»** с проверкой совместимости, backup и проверкой ucode-компиляции до замены файла.
+- Кнопка **«Фикс ping/ICMP для правил подсетей»**: priority-правила TProxy ограничиваются TCP/UDP, чтобы ICMP не получал proxy-маркер.
 - Расширяемая панель **«Фиксы Forkop»**: новые исправления добавляются в whitelist-реестр backend и не позволяют запускать произвольные команды из браузера.
 - Двусторонние UDP-проверки через DNS в составе обычной проверки сервисов.
 
@@ -34,13 +35,13 @@ LuCI → forkop-servicecheck → probe.uc
 Для OpenWrt с opkg:
 
 ```sh
-opkg install luci-app-forkop-servicecheck_1.1.0-r1_all.ipk
+opkg install luci-app-forkop-servicecheck_1.1.0-r2_all.ipk
 ```
 
 Для OpenWrt с apk:
 
 ```sh
-apk add --allow-untrusted ./luci-app-forkop-servicecheck-1.1.0-r1.apk
+apk add --allow-untrusted ./luci-app-forkop-servicecheck-1.1.0-r2.apk
 ```
 
 Установка без пакетного менеджера:
@@ -72,6 +73,18 @@ sh install-forkop-servicecheck.sh --uninstall
 
 ```sh
 /usr/bin/forkop-servicecheck xhttp_patch
+```
+
+## ICMP/TProxy hotfix
+
+Вкладка **«Фикс Forkop»** содержит отдельный фикс для priority-правил IP/подсетей. Он добавляет к правилам с proxy-маркером ограничение `meta l4proto { tcp, udp }`, поэтому ping/ICMP больше не маршрутизируется в TProxy, который ICMP не перехватывает.
+
+Перед заменой `nft/apply.uc` модуль проверяет совместимость исходника, создаёт backup в `/root` и компилирует временный файл через `ucode -c`. Если Forkop работает, он перезапускается, а получившиеся цепочки `priority_rules` и `priority_output_rules` проверяются. При ошибке исходный файл возвращается автоматически.
+
+Ручной запуск:
+
+```sh
+/usr/bin/forkop-servicecheck icmp_tproxy_patch
 ```
 
 Собственные профили сервисов можно разместить в:

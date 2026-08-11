@@ -639,11 +639,9 @@ return view.extend({
     });
 
     var maintenanceChildren = [
-      E("h3", {}, "Фикс импорта подписок xHTTP"),
-      E("p", { class: "fkpsc-dim" }, [
-        "Скрипт на роутере: ",
-        E("code", {}, "/usr/lib/forkop-servicecheck/xhttp_hotfix.sh"),
-      ]),
+      E("h3", {}, "Безопасные исправления Forkop"),
+      E("p", { class: "fkpsc-dim" },
+        "Здесь доступны только встроенные исправления из белого списка backend. Произвольные команды из браузера не выполняются."),
     ];
     if (fixesNodes.length) {
       fixesNodes.forEach(function (node) { maintenanceChildren.push(node); });
