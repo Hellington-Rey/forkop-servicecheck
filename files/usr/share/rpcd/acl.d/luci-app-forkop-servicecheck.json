@@ -1,0 +1,10 @@
+{
+  "luci-app-forkop-servicecheck": {
+    "description": "Grant access to the Forkop service check page",
+    "read": {
+      "file": {
+        "/usr/bin/forkop-servicecheck": [ "exec" ]
+      }
+    }
+  }
+}

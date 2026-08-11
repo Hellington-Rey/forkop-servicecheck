@@ -1,0 +1,13 @@
+{
+  "admin/services/forkop_servicecheck": {
+    "title": "Forkop: проверка сервисов",
+    "order": 43,
+    "action": {
+      "type": "view",
+      "path": "forkop/servicecheck"
+    },
+    "depends": {
+      "acl": [ "luci-app-forkop-servicecheck" ]
+    }
+  }
+}
