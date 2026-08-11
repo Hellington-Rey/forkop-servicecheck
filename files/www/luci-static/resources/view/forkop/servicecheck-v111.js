@@ -17,7 +17,7 @@
  */
 
 var BIN = "/usr/bin/forkop-servicecheck";
-var UI_VERSION = "1.1.0"; // Filename uses v110: dots are path separators in LuCI view names.
+var UI_VERSION = "1.1.1"; // Filename uses v111: dots are path separators in LuCI view names.
 var POLL_INTERVAL_MS = 1500;
 var JOB_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -111,6 +111,20 @@ function injectStyles() {
     ".fkpsc-actions { display: flex; gap: .6em; flex-wrap: wrap; align-items: center; margin: 0 0 1.2em; }",
     ".fkpsc-progress { flex: 1 1 200px; min-width: 150px; height: 6px; background: rgba(127,127,127,.22); border-radius: 3px; overflow: hidden; }",
     ".fkpsc-progress > div { height: 100%; width: 0; background: var(--accent); transition: width .35s ease; }",
+    ".fkpsc-custom-form { display:flex; flex-wrap:wrap; gap:.55em; align-items:center; margin:.55em 0 .75em; }",
+    ".fkpsc-custom-target { flex:1 1 260px; min-width:180px; }",
+    ".fkpsc-custom-port { width:7em; }",
+    ".fkpsc-custom-port-label { display:flex; gap:.35em; align-items:center; }",
+    ".fkpsc-custom-result { margin:.7em 0 1.15em; padding:.8em .9em; border-radius:9px; border-left:4px solid var(--skip); background:rgba(127,127,127,.08); }",
+    ".fkpsc-custom-result.state-success { border-left-color:var(--ok); }",
+    ".fkpsc-custom-result.state-warning { border-left-color:var(--warn); }",
+    ".fkpsc-custom-result.state-error { border-left-color:var(--err); }",
+    ".fkpsc-custom-head { display:flex; flex-wrap:wrap; gap:.45em; align-items:center; margin-bottom:.35em; }",
+    ".fkpsc-custom-title { font-weight:700; margin-right:auto; }",
+    ".fkpsc-custom-pill { padding:.18em .6em; border-radius:999px; background:rgba(127,127,127,.16); font-size:.84em; font-weight:600; }",
+    ".fkpsc-custom-pill.ok { color:var(--ok); background:rgba(47,158,68,.13); }",
+    ".fkpsc-custom-pill.warn { color:#9a6500; background:rgba(232,163,61,.16); }",
+    ".fkpsc-custom-pill.err { color:var(--err); background:rgba(224,49,49,.13); }",
 
     /* --- сводка --- */
     ".fkpsc-summary { display: flex; flex-wrap: wrap; gap: .5em; margin: 0 0 1em; }",
@@ -475,6 +489,43 @@ function renderRunMeta(state) {
   }));
 }
 
+function renderCustomResult(result) {
+  var item = result.item || {};
+  var route = result.route || {};
+  var reachable = item.state === "success" || item.state === "warning";
+  var through = route.through_sing_box;
+  var routeText = through === true ? "через sing-box" :
+    (through === false ? "мимо sing-box" : "маршрут не определён");
+  var routeClass = through === true ? "ok" : (through === false ? "err" : "warn");
+  var stateClass = through === null || through === undefined ? "warning" :
+    (reachable ? "success" : "error");
+  var nodes = [
+    E("div", { class: "fkpsc-custom-head" }, [
+      E("span", { class: "fkpsc-custom-title" }, result.target + ":" + result.port),
+      E("span", { class: "fkpsc-custom-pill " + (reachable ? "ok" : "err") },
+        reachable ? "доступен" : "не доступен"),
+      E("span", { class: "fkpsc-custom-pill " + routeClass }, routeText),
+    ]),
+    E("div", {}, route.message || ""),
+  ];
+
+  if (item.message) {
+    nodes.push(E("div", { class: "fkpsc-row-msg" }, item.message));
+  }
+
+  nodes.push(renderStages(item));
+  var facts = renderFacts(item);
+  if (facts) {
+    nodes.push(facts);
+  }
+  if (result.netns_error) {
+    nodes.push(E("div", { class: "fkpsc-dim", style: "margin-top:.4em" },
+      "Режим клиента не запустился: " + result.netns_error + ". Проверено с роутера."));
+  }
+
+  return E("div", { class: "fkpsc-custom-result state-" + stateClass }, nodes);
+}
+
 return view.extend({
   handleSaveApply: null,
   handleSave: null,
@@ -522,6 +573,7 @@ return view.extend({
     var progressWrap = E("div", { class: "fkpsc-progress", style: "display:none" }, [progressBar]);
     var progressText = E("span", { class: "fkpsc-dim" }, "");
     var metaNode = E("div", {});
+    var customResultNode = E("div", {});
 
     var modeRouter = E("input", { type: "radio", name: "fkpsc-mode", value: "router", checked: "" });
     var modeNetns = E("input", {
@@ -543,6 +595,69 @@ return view.extend({
     });
     modeNetns.addEventListener("change", function () {
       clientIpInput.disabled = false;
+    });
+
+    var customTargetInput = E("input", {
+      type: "text",
+      class: "cbi-input-text fkpsc-custom-target",
+      placeholder: "example.com или 1.1.1.1",
+      autocomplete: "off",
+      spellcheck: "false",
+    });
+    var customPortInput = E("input", {
+      type: "number",
+      class: "cbi-input-text fkpsc-custom-port",
+      min: "1",
+      max: "65535",
+      value: "443",
+      title: "TCP-порт",
+    });
+    var customCheckButton = E("button", {
+      class: "cbi-button cbi-button-action important",
+      type: "button",
+    }, "Проверить IP/домен");
+
+    function runCustomCheck() {
+      if (customCheckButton.disabled) {
+        return;
+      }
+      var target = customTargetInput.value.trim();
+      var port = parseInt(customPortInput.value, 10) || 443;
+      if (!target) {
+        ui.addNotification(null, E("p", {}, "Введите IP-адрес или домен."), "warning");
+        customTargetInput.focus();
+        return;
+      }
+
+      var mode = modeNetns.checked ? "netns" : "router";
+      var clientIp = mode === "netns" ? clientIpInput.value.trim() : "";
+      customCheckButton.disabled = true;
+      customCheckButton.textContent = "Проверяем…";
+      customResultNode.replaceChildren(E("div", { class: "fkpsc-custom-result state-warning" },
+        "Устанавливаем соединение и смотрим маршрут в sing-box…"));
+
+      callBin(["custom", target, String(port), mode, clientIp]).then(function (result) {
+        if (!result.success) {
+          customResultNode.replaceChildren(E("div", { class: "fkpsc-custom-result state-error" },
+            result.message || "Не удалось выполнить проверку."));
+          return;
+        }
+        customResultNode.replaceChildren(renderCustomResult(result));
+      }).catch(function (error) {
+        customResultNode.replaceChildren(E("div", { class: "fkpsc-custom-result state-error" },
+          "Ошибка проверки: " + error.message));
+      }).finally(function () {
+        customCheckButton.disabled = false;
+        customCheckButton.textContent = "Проверить IP/домен";
+      });
+    }
+
+    customCheckButton.addEventListener("click", runCustomCheck);
+    customTargetInput.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        runCustomCheck();
+      }
     });
 
     var pickNodes = {};
@@ -802,6 +917,15 @@ return view.extend({
             clientIpInput,
           ]),
         ]),
+        E("h3", { style: "margin-top:1em" }, "Проверить свой IP или домен"),
+        E("p", { class: "fkpsc-dim" },
+          "Введите любую цель и TCP-порт. Проверка покажет доступность и подтвердит, попало ли соединение в sing-box. Используется выбранный выше режим."),
+        E("div", { class: "fkpsc-custom-form" }, [
+          customTargetInput,
+          E("label", { class: "fkpsc-custom-port-label" }, ["Порт", customPortInput]),
+          customCheckButton,
+        ]),
+        customResultNode,
         E("h3", {}, "Сервисы"),
         E("div", { class: "fkpsc-service-tools" }, [serviceSearch, quickPreset, udpPreset]),
         picker,

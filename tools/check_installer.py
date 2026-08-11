@@ -13,7 +13,7 @@ MARKER = "__FORKOP_SC_PAYLOAD__"
 
 def main():
     script = INSTALLER.read_text(encoding="utf-8")
-    assert 'VERSION="1.1.0"' in script
+    assert 'VERSION="1.1.1"' in script
     assert "detect_installed_version()" in script
     assert 'INSTALLED_VERSION="$(detect_installed_version || true)"' in script
     assert "sed -n '/^__PAYLOAD_BELOW__$/,$p' \"$0\"" not in script
@@ -25,6 +25,9 @@ def main():
 
     with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
         names = set(tar.getnames())
+        cli = tar.extractfile("usr/bin/forkop-servicecheck").read().decode("utf-8")
+        engine = tar.extractfile("usr/lib/forkop-servicecheck/probe.uc").read().decode("utf-8")
+        view = tar.extractfile("www/luci-static/resources/view/forkop/servicecheck-v111.js").read().decode("utf-8")
 
     required = {
         "usr/bin/forkop-servicecheck",
@@ -33,10 +36,13 @@ def main():
         "usr/lib/forkop-servicecheck/icmp_tproxy_hotfix.sh",
         "usr/share/forkop-servicecheck/profiles.json",
         "usr/share/forkop-servicecheck/version",
-        "www/luci-static/resources/view/forkop/servicecheck-v110.js",
+        "www/luci-static/resources/view/forkop/servicecheck-v111.js",
     }
     missing = required - names
     assert not missing, f"missing payload files: {sorted(missing)}"
+    assert 'custom: [ "custom", 4 ]' in cli
+    assert 'else if (mode == "custom")' in engine
+    assert '"Проверить IP/домен"' in view
     print(f"installer OK: {len(archive)} bytes, {len(names)} entries")
 
 

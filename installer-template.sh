@@ -19,7 +19,8 @@ BIN_PATH="/usr/bin/forkop-servicecheck"
 LIB_DIR="/usr/lib/forkop-servicecheck"
 SHARE_DIR="/usr/share/forkop-servicecheck"
 VERSION_FILE="$SHARE_DIR/version"
-VIEW_FILE="/www/luci-static/resources/view/forkop/servicecheck-v110.js"
+VIEW_FILE="/www/luci-static/resources/view/forkop/servicecheck-v111.js"
+PREVIOUS_VIEW_FILE="/www/luci-static/resources/view/forkop/servicecheck-v110.js"
 LEGACY_VIEW_FILE="/www/luci-static/resources/view/forkop/servicecheck.js"
 BROKEN_VIEW_FILE="/www/luci-static/resources/view/forkop/servicecheck-1.1.0.js"
 MENU_FILE="/usr/share/luci/menu.d/luci-app-forkop-servicecheck.json"
@@ -54,7 +55,7 @@ do_uninstall() {
         "$BIN_PATH" netns_teardown >/dev/null 2>&1 || true
     fi
 
-    rm -f "$BIN_PATH" "$VIEW_FILE" "$LEGACY_VIEW_FILE" "$BROKEN_VIEW_FILE" "$MENU_FILE" "$ACL_FILE"
+    rm -f "$BIN_PATH" "$VIEW_FILE" "$PREVIOUS_VIEW_FILE" "$LEGACY_VIEW_FILE" "$BROKEN_VIEW_FILE" "$MENU_FILE" "$ACL_FILE"
     rm -rf "$LIB_DIR" "$SHARE_DIR" "$STATE_DIR" "$NETNS_DIR"
 
     clear_luci_cache
@@ -184,8 +185,8 @@ cp -f "$TMP_DIR/usr/lib/forkop-servicecheck/probe.uc" "$LIB_DIR/probe.uc"
 cp -f "$TMP_DIR/usr/lib/forkop-servicecheck/xhttp_hotfix.sh" "$LIB_DIR/xhttp_hotfix.sh"
 cp -f "$TMP_DIR/usr/lib/forkop-servicecheck/icmp_tproxy_hotfix.sh" "$LIB_DIR/icmp_tproxy_hotfix.sh"
 cp -f "$TMP_DIR/usr/share/forkop-servicecheck/profiles.json" "$SHARE_DIR/profiles.json"
-cp -f "$TMP_DIR/www/luci-static/resources/view/forkop/servicecheck-v110.js" "$VIEW_FILE"
-rm -f "$LEGACY_VIEW_FILE" "$BROKEN_VIEW_FILE"
+cp -f "$TMP_DIR/www/luci-static/resources/view/forkop/servicecheck-v111.js" "$VIEW_FILE"
+rm -f "$LEGACY_VIEW_FILE" "$BROKEN_VIEW_FILE" "$PREVIOUS_VIEW_FILE"
 cp -f "$TMP_DIR/usr/share/luci/menu.d/luci-app-forkop-servicecheck.json" "$MENU_FILE"
 cp -f "$TMP_DIR/usr/share/rpcd/acl.d/luci-app-forkop-servicecheck.json" "$ACL_FILE"
 

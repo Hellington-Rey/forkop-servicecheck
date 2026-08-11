@@ -37,6 +37,8 @@ function show_help() {
     print("Available commands:\n");
     print("    list                    Показать доступные профили сервисов\n");
     print("    capabilities            Показать возможности роутера (curl, dig, netns, fakeip)\n");
+    print("    custom HOST [PORT] [MODE] [IP]\n");
+    print("                            Проверить любой IPv4/домен и маршрут через sing-box\n");
     print("    run IDS [MODE] [IP]     Проверить сервисы синхронно и напечатать JSON\n");
     print("    start IDS [MODE] [IP]   Запустить проверку в фоне, вернуть job_id\n");
     print("    status JOB_ID           Показать состояние фоновой проверки\n");
@@ -56,6 +58,7 @@ function command_spec(command) {
     let commands = {
         list: [ "list", 0 ],
         capabilities: [ "capabilities", 0 ],
+        custom: [ "custom", 4 ],
         fixes: [ "fixes", 0 ],
         fix: [ "fix", 1 ],
         run: [ "run", 3 ],

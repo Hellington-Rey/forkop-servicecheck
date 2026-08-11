@@ -23,8 +23,8 @@ FILES_DIR = ROOT / "files"
 OUT_DIR = ROOT / "dist"
 
 PACKAGE = "luci-app-forkop-servicecheck"
-VERSION = "1.1.0"
-RELEASE = "r2"
+VERSION = "1.1.1"
+RELEASE = "r1"
 ARCH = "all"
 LICENSE = "MIT"
 MAINTAINER = "forkop-servicecheck"
@@ -48,7 +48,7 @@ PAYLOAD = [
     ("./usr/lib/forkop-servicecheck/icmp_tproxy_hotfix.sh", "usr/lib/forkop-servicecheck/icmp_tproxy_hotfix.sh", 0o755),
     ("./usr/share/forkop-servicecheck/profiles.json", "usr/share/forkop-servicecheck/profiles.json", 0o644),
     ("./usr/share/forkop-servicecheck/version", "usr/share/forkop-servicecheck/version", 0o644),
-    ("./www/luci-static/resources/view/forkop/servicecheck-v110.js", "www/luci-static/resources/view/forkop/servicecheck-v110.js", 0o644),
+    ("./www/luci-static/resources/view/forkop/servicecheck-v111.js", "www/luci-static/resources/view/forkop/servicecheck-v111.js", 0o644),
     ("./usr/share/luci/menu.d/luci-app-forkop-servicecheck.json", "usr/share/luci/menu.d/luci-app-forkop-servicecheck.json", 0o644),
     ("./usr/share/rpcd/acl.d/luci-app-forkop-servicecheck.json", "usr/share/rpcd/acl.d/luci-app-forkop-servicecheck.json", 0o644),
 ]

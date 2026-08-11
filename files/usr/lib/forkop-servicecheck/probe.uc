@@ -223,6 +223,30 @@ function valid_ipv4(value) {
     return true;
 }
 
+function valid_domain(value) {
+    value = trim(as_string(value));
+    if (length(value) < 1 || length(value) > 253 || index(value, "..") >= 0)
+        return false;
+
+    for (let label in split(value, ".")) {
+        if (length(label) < 1 || length(label) > 63 ||
+            match(label, /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$/) == null)
+            return false;
+    }
+
+    return true;
+}
+
+function valid_custom_host(value) {
+    value = trim(as_string(value));
+    if (valid_ipv4(value))
+        return true;
+    // Не принимаем ошибочный IPv4 вроде 999.1.1.1 за обычное доменное имя.
+    if (match(value, /^[0-9.]+$/) != null)
+        return false;
+    return valid_domain(value);
+}
+
 function ipv4_to_int(value) {
     let parts = split(trim(as_string(value)), ".");
     if (length(parts) != 4)
@@ -761,25 +785,75 @@ function clash_connections() {
     return array_or_empty(object_or_empty(parsed).connections);
 }
 
-function outbound_for(connections, host, remote_ip) {
+function route_for(connections, host, remote_ip, port) {
     host = lc(as_string(host));
     remote_ip = as_string(remote_ip);
+    port = int(port || 0);
 
     for (let connection in connections) {
         connection = object_or_empty(connection);
         let metadata = object_or_empty(connection.metadata);
         let connection_host = lc(as_string(metadata.host));
         let destination = as_string(metadata.destinationIP);
+        let destination_port = int(metadata.destinationPort || 0);
 
         if ((connection_host != "" && connection_host == host) ||
             (remote_ip != "" && destination == remote_ip)) {
+            if (port > 0 && destination_port > 0 && destination_port != port)
+                continue;
             let chains = array_or_empty(connection.chains);
-            if (length(chains) > 0)
-                return join(" ← ", chains);
+            return {
+                seen: true,
+                outbound: length(chains) > 0 ? join(" ← ", chains) : ""
+            };
         }
     }
 
-    return "";
+    return { seen: false, outbound: "" };
+}
+
+function outbound_for(connections, host, remote_ip) {
+    return route_for(connections, host, remote_ip, 0).outbound;
+}
+
+// Держим отдельное TCP-соединение открытым несколько секунд и в это время
+// опрашиваем Clash API. Так маршрут определяется заметно надёжнее, чем после
+// короткого HTTP-запроса, который часто успевает закрыться до get_connections.
+function detect_live_route(ctx, host, port, remote_ip) {
+    let unknown = { attempted: false, seen: false, outbound: "" };
+    if (!ctx.forkop_running)
+        return unknown;
+
+    let command = "";
+    let nc_mode = as_string(ctx.tools.nc_mode);
+    if (ctx.tools.nc && (nc_mode == "zero" || nc_mode == "wait")) {
+        let args = prefixed_args(ctx, [ "nc", "-w", "6", as_string(host), as_string(port) ]);
+        command = "( sleep 5 ) | " + command_from_args(args);
+    }
+    else if (ctx.tools.curl) {
+        let url = "https://" + as_string(host) + ":" + as_string(port) + "/";
+        let args = prefixed_args(ctx, [
+            "curl", "-k", "-sS", "-L", "--connect-timeout", "4", "--max-time", "6",
+            "--limit-rate", "1", "-o", "/dev/null", url
+        ]);
+        command = command_from_args(args);
+    }
+    else {
+        return unknown;
+    }
+
+    let launched = normalize_status(system("( " + command + " ) >/dev/null 2>&1 &")) == 0;
+    if (!launched)
+        return unknown;
+
+    for (let attempt = 0; attempt < 6; attempt++) {
+        run_quiet([ "sleep", "1" ]);
+        let route = route_for(clash_connections(), host, remote_ip, port);
+        if (route.seen)
+            return { attempted: true, seen: true, outbound: route.outbound };
+    }
+
+    return { attempted: true, seen: false, outbound: "" };
 }
 
 // ---------------------------------------------------------------------------
@@ -1096,6 +1170,87 @@ function probe_service(ctx, profile) {
     };
 }
 
+function custom_check(host, port, mode, client_ip) {
+    host = lc(trim(as_string(host)));
+    if (length(host) > 0 && substr(host, length(host) - 1, 1) == ".")
+        host = substr(host, 0, length(host) - 1);
+
+    port = int(port || 443);
+    if (!valid_custom_host(host))
+        return { success: false, message: "Введите корректный IPv4-адрес или домен без протокола и пути" };
+    if (port < 1 || port > 65535)
+        return { success: false, message: "TCP-порт должен быть от 1 до 65535" };
+
+    let ctx = build_context(mode, client_ip);
+    let dns = probe_dns(ctx, host);
+    let remote_ip = dns.ok ? as_string(dns.ip) : (valid_ipv4(host) ? host : "");
+    let live_route = detect_live_route(ctx, host, port, remote_ip);
+    let item = probe_target(ctx, {
+        kind: "tcp",
+        host,
+        port,
+        label: host + ":" + as_string(port)
+    });
+
+    let through_sing_box = null;
+    let route_status = "unknown";
+    let route_message = "Маршрут не удалось подтвердить через Clash API.";
+    let evidence = "";
+
+    if (!ctx.forkop_running) {
+        through_sing_box = false;
+        route_status = "direct";
+        evidence = "forkop_stopped";
+        route_message = "Forkop остановлен: соединение не проходит через sing-box.";
+    }
+    else if (live_route.seen) {
+        through_sing_box = true;
+        route_status = "sing-box";
+        evidence = "clash_api";
+        item.outbound = live_route.outbound;
+        route_message = live_route.outbound != ""
+            ? "Соединение найдено в sing-box; outbound: " + live_route.outbound
+            : "Соединение найдено среди активных соединений sing-box.";
+    }
+    else if (item.dns_fakeip) {
+        through_sing_box = true;
+        route_status = "sing-box";
+        evidence = "fakeip";
+        route_message = "Домен получил FakeIP, который обслуживается sing-box.";
+    }
+    else if (live_route.attempted && item.state != "error" && item.state != "skipped") {
+        through_sing_box = false;
+        route_status = "direct";
+        evidence = "clash_api_absent";
+        route_message = "Соединение доступно, но за время теста не появилось в Clash API: маршрут идёт мимо sing-box.";
+    }
+    else if (item.state == "error") {
+        route_message = "Соединение не установлено, поэтому определить маршрут нельзя.";
+    }
+
+    if (ctx.netns_active)
+        netns_teardown();
+
+    return {
+        success: true,
+        target: host,
+        port,
+        mode: ctx.mode,
+        requested_mode: as_string(mode) == "netns" ? "netns" : "router",
+        client_ip: as_string(ctx.client_ip),
+        netns_error: as_string(ctx.netns_error),
+        forkop_running: ctx.forkop_running,
+        route: {
+            status: route_status,
+            through_sing_box,
+            outbound: as_string(item.outbound),
+            evidence,
+            message: route_message
+        },
+        item
+    };
+}
+
 function selected_profiles(ids) {
     ids = trim(as_string(ids));
     let all = load_profiles();
@@ -1312,6 +1467,11 @@ else if (mode == "fixes")
     exit(list_fixes());
 else if (mode == "fix")
     exit(run_fix(ARGV[1]));
+else if (mode == "custom") {
+    let result = custom_check(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
+    write_json(result);
+    exit(result.success ? 0 : 1);
+}
 else if (mode == "run") {
     write_json(run_check(ARGV[1], ARGV[2], ARGV[3], ""));
     exit(0);

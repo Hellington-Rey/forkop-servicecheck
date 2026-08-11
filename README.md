@@ -13,6 +13,7 @@ LuCI-модуль для OpenWrt, который проверяет доступ
 - Режим проверки с роутера и режим проверки от имени клиента через временный network namespace.
 - Отображение fakeip, времени DNS/TCP/TLS/HTTP и выбранного outbound через Clash API.
 - Фоновый запуск с отображением прогресса.
+- Поле **«Проверить свой IP или домен»**: произвольная цель и TCP-порт проверяются тем же маршрутом, с отдельным вердиктом «через sing-box» или «мимо sing-box».
 - Классификация причин ошибок: DNS failure, timeout, TCP refused, TLS reset, ошибки сертификата, HTTP 403/451 и медленные соединения.
 - Кнопка **«Починить импорт xHTTP»** с проверкой совместимости, backup и проверкой ucode-компиляции до замены файла.
 - Кнопка **«Фикс ping/ICMP для правил подсетей»**: priority-правила TProxy ограничиваются TCP/UDP, чтобы ICMP не получал proxy-маркер.
@@ -35,13 +36,13 @@ LuCI → forkop-servicecheck → probe.uc
 Для OpenWrt с opkg:
 
 ```sh
-opkg install luci-app-forkop-servicecheck_1.1.0-r2_all.ipk
+opkg install luci-app-forkop-servicecheck_1.1.1-r1_all.ipk
 ```
 
 Для OpenWrt с apk:
 
 ```sh
-apk add --allow-untrusted ./luci-app-forkop-servicecheck-1.1.0-r2.apk
+apk add --allow-untrusted ./luci-app-forkop-servicecheck-1.1.1-r1.apk
 ```
 
 Установка без пакетного менеджера:
@@ -51,6 +52,14 @@ wget -O- https://raw.githubusercontent.com/Hellington-Rey/forkop-servicecheck/ma
 ```
 
 Установщик определяет уже установленную версию и сообщает, выполняется ли чистая установка, обновление или переустановка текущей версии.
+
+На основной вкладке можно ввести домен или IPv4-адрес, указать TCP-порт и нажать **«Проверить IP/домен»**. Модуль проверит DNS и TCP-доступность, затем сопоставит удерживаемое тестовое соединение с Clash API sing-box. Для доменов FakeIP также используется как подтверждение маршрута через sing-box.
+
+Та же проверка из консоли:
+
+```sh
+/usr/bin/forkop-servicecheck custom example.com 443 router
+```
 
 Удаление:
 
