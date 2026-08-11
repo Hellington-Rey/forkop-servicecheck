@@ -18,7 +18,10 @@ BUILT_AT="@@BUILT_AT@@"
 BIN_PATH="/usr/bin/forkop-servicecheck"
 LIB_DIR="/usr/lib/forkop-servicecheck"
 SHARE_DIR="/usr/share/forkop-servicecheck"
-VIEW_FILE="/www/luci-static/resources/view/forkop/servicecheck.js"
+VERSION_FILE="$SHARE_DIR/version"
+VIEW_FILE="/www/luci-static/resources/view/forkop/servicecheck-v110.js"
+LEGACY_VIEW_FILE="/www/luci-static/resources/view/forkop/servicecheck.js"
+BROKEN_VIEW_FILE="/www/luci-static/resources/view/forkop/servicecheck-1.1.0.js"
 MENU_FILE="/usr/share/luci/menu.d/luci-app-forkop-servicecheck.json"
 ACL_FILE="/usr/share/rpcd/acl.d/luci-app-forkop-servicecheck.json"
 STATE_DIR="/var/run/forkop-servicecheck"
@@ -51,7 +54,7 @@ do_uninstall() {
         "$BIN_PATH" netns_teardown >/dev/null 2>&1 || true
     fi
 
-    rm -f "$BIN_PATH" "$VIEW_FILE" "$MENU_FILE" "$ACL_FILE"
+    rm -f "$BIN_PATH" "$VIEW_FILE" "$LEGACY_VIEW_FILE" "$BROKEN_VIEW_FILE" "$MENU_FILE" "$ACL_FILE"
     rm -rf "$LIB_DIR" "$SHARE_DIR" "$STATE_DIR" "$NETNS_DIR"
 
     clear_luci_cache
@@ -68,6 +71,44 @@ case "$1" in
 esac
 
 log "Forkop Service Check $VERSION (собран $BUILT_AT)"
+
+detect_installed_version() {
+    if [ -s "$VERSION_FILE" ]; then
+        head -n 1 "$VERSION_FILE"
+        return
+    fi
+
+    if command -v opkg >/dev/null 2>&1; then
+        PACKAGE_VERSION="$(opkg status luci-app-forkop-servicecheck 2>/dev/null |
+            sed -n 's/^Version: //p' | head -n 1)"
+        if [ -n "$PACKAGE_VERSION" ]; then
+            printf '%s\n' "$PACKAGE_VERSION"
+            return
+        fi
+    fi
+
+    if command -v apk >/dev/null 2>&1 &&
+        apk info -e luci-app-forkop-servicecheck >/dev/null 2>&1; then
+        apk info -v luci-app-forkop-servicecheck 2>/dev/null | head -n 1
+        return
+    fi
+
+    if [ -x "$BIN_PATH" ]; then
+        printf '%s\n' "legacy (без маркера версии)"
+    fi
+}
+
+INSTALLED_VERSION="$(detect_installed_version || true)"
+if [ -n "$INSTALLED_VERSION" ]; then
+    if [ "$INSTALLED_VERSION" = "$VERSION" ]; then
+        log "Уже установлена версия $VERSION — выполняю проверку и переустановку"
+    else
+        log "Обнаружена предыдущая версия: $INSTALLED_VERSION"
+        log "Обновляю до версии $VERSION с сохранением пользовательских профилей в /etc"
+    fi
+else
+    log "Предыдущая версия не обнаружена — чистая установка"
+fi
 
 # --- Проверки окружения -----------------------------------------------------
 
@@ -99,7 +140,11 @@ trap cleanup EXIT INT TERM
 log "Распаковываю файлы"
 
 extract_payload() {
-    sed -n '/^__PAYLOAD_BELOW__$/,$p' "$0" | tail -n +2 | base64 -d | tar -xzf - -C "$TMP_DIR"
+    # Payload находится в here-document, поэтому установка одинаково работает
+    # из файла и через `wget -O- URL | sh`, где $0 указывает на `sh`.
+    base64 -d <<'__FORKOP_SC_PAYLOAD__' | tar -xzf - -C "$TMP_DIR"
+@@PAYLOAD@@
+__FORKOP_SC_PAYLOAD__
 }
 
 extract_payload || fail "Не удалось распаковать полезную нагрузку."
@@ -136,13 +181,17 @@ mkdir -p /usr/share/luci/menu.d /usr/share/rpcd/acl.d
 
 cp -f "$TMP_DIR/usr/bin/forkop-servicecheck" "$BIN_PATH"
 cp -f "$TMP_DIR/usr/lib/forkop-servicecheck/probe.uc" "$LIB_DIR/probe.uc"
+cp -f "$TMP_DIR/usr/lib/forkop-servicecheck/xhttp_hotfix.sh" "$LIB_DIR/xhttp_hotfix.sh"
 cp -f "$TMP_DIR/usr/share/forkop-servicecheck/profiles.json" "$SHARE_DIR/profiles.json"
-cp -f "$TMP_DIR/www/luci-static/resources/view/forkop/servicecheck.js" "$VIEW_FILE"
+cp -f "$TMP_DIR/www/luci-static/resources/view/forkop/servicecheck-v110.js" "$VIEW_FILE"
+rm -f "$LEGACY_VIEW_FILE" "$BROKEN_VIEW_FILE"
 cp -f "$TMP_DIR/usr/share/luci/menu.d/luci-app-forkop-servicecheck.json" "$MENU_FILE"
 cp -f "$TMP_DIR/usr/share/rpcd/acl.d/luci-app-forkop-servicecheck.json" "$ACL_FILE"
 
 chmod 0755 "$BIN_PATH"
+chmod 0755 "$LIB_DIR/xhttp_hotfix.sh"
 chmod 0644 "$LIB_DIR/probe.uc" "$SHARE_DIR/profiles.json" "$VIEW_FILE" "$MENU_FILE" "$ACL_FILE"
+printf '%s\n' "$VERSION" > "$VERSION_FILE"
 
 # --- Дожимаем LuCI ----------------------------------------------------------
 
@@ -192,6 +241,3 @@ cat <<'EOF'
 EOF
 
 exit 0
-
-__PAYLOAD_BELOW__
-@@PAYLOAD@@

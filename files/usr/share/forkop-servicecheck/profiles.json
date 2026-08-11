@@ -208,10 +208,12 @@
     },
     {
       "id": "udp_common",
-      "title": "UDP / QUIC",
+      "title": "UDP / QUIC / Discord",
       "group": "network",
-      "description": "Проверка возможности отправить UDP-трафик через текущий маршрут. UDP не подтверждает доставку без ответа приложения.",
+      "description": "Двусторонняя проверка UDP через DNS-ответы и best-effort отправка QUIC. Точный Discord Voice IP Discovery запускается отдельно для динамического endpoint.",
       "targets": [
+        { "kind": "udp_dns", "host": "1.1.1.1", "port": 53, "query": "discord.com", "label": "Cloudflare DNS UDP :53" },
+        { "kind": "udp_dns", "host": "8.8.8.8", "port": 53, "query": "discord.com", "label": "Google DNS UDP :53", "optional": true },
         { "kind": "udp", "host": "cloudflare.com", "port": 443, "label": "Cloudflare QUIC :443" },
         { "kind": "udp", "host": "google.com", "port": 443, "label": "Google QUIC :443" },
         { "kind": "udp", "host": "g.whatsapp.net", "port": 443, "label": "WhatsApp UDP :443", "optional": true }

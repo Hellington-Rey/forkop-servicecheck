@@ -102,6 +102,10 @@ function command_exists(name) {
     return run_quiet([ "command", "-v", as_string(name) ]);
 }
 
+function write_json(value) {
+    print(sprintf("%J", value), "\n");
+}
+
 function xhttp_patch() {
     if (fs.stat(XHTTP_PATCH) == null) {
         write_json({ success: false, message: "xHTTP-патч не установлен в пакет" });
@@ -112,8 +116,27 @@ function xhttp_patch() {
     return result.status;
 }
 
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
+function available_fixes() {
+    return [
+        {
+            id: "xhttp_import",
+            title: "Фикс xHTTP импорта подписок",
+            description: "Исправляет импорт дополнительных полей xHTTP из подписок в parser.uc Forkop.",
+            risk: "Создаётся резервная копия parser.uc; патч проверяется через ucode до замены."
+        }
+    ];
+}
+
+function list_fixes() {
+    write_json({ success: true, fixes: available_fixes() });
+    return 0;
+}
+
+function run_fix(id) {
+    if (as_string(id) == "xhttp_import")
+        return xhttp_patch();
+    write_json({ success: false, message: "неизвестный фикс Forkop" });
+    return 1;
 }
 
 function parse_json(value) {
@@ -332,7 +355,7 @@ function target_label(target) {
     target = object_or_empty(target);
     if (as_string(target.label) != "")
         return as_string(target.label);
-    if (as_string(target.kind) == "tcp" || as_string(target.kind) == "udp")
+    if (as_string(target.kind) == "tcp" || as_string(target.kind) == "udp" || as_string(target.kind) == "udp_dns")
         return sprintf("%s:%d", as_string(target.host), int(target.port || 443));
     return as_string(target.host) + as_string(target.path || "/");
 }
@@ -658,11 +681,35 @@ function udp_probe(ctx, target) {
     // UDP не подтверждает доставку без ответа приложения. Это best-effort:
     // успешная отправка означает, что маршрут и локальный сокет доступны.
     if (status == 0)
-        return { reached: true, code: 0, remote_ip: "", tcp_ms: elapsed, tls_ms: 0, total_ms: elapsed, verdict: "", message: "UDP-пакет отправлен; подтверждение доставки протоколом не предусмотрено" };
-    return { reached: false, code: 0, remote_ip: "", tcp_ms: elapsed, tls_ms: 0, total_ms: elapsed, verdict: status == 124 ? "timeout" : "failed", message: "UDP-проверка завершилась с кодом " + status };
+        return { reached: true, code: 0, remote_ip: "", tcp_ms: elapsed, tls_ms: 0, total_ms: elapsed, verdict: "udp_unconfirmed", message: "UDP-пакет отправлен, но протокол не подтвердил доставку" };
+    return { reached: true, code: 0, remote_ip: "", tcp_ms: elapsed, tls_ms: 0, total_ms: elapsed, verdict: "udp_unconfirmed", message: "UDP-ответ не получен; это не доказывает блокировку трафика" };
+}
+
+function udp_dns_probe(ctx, target) {
+    if (!ctx.tools.nslookup)
+        return { reached: false, code: 0, tcp_ms: 0, tls_ms: 0, total_ms: 0, remote_ip: "", verdict: "skipped", message: "нет nslookup для двусторонней UDP-проверки" };
+
+    let query = as_string(target.query || "discord.com");
+    let started = now_ms();
+    let result = capture_args(prefixed_args(ctx, [ "nslookup", query, as_string(target.host) ]), true);
+    let elapsed = now_ms() - started;
+    let output = lc(as_string(result.output));
+    let ok = result.status == 0 && index(output, "address") >= 0;
+    return {
+        reached: ok,
+        code: 0,
+        remote_ip: as_string(target.host),
+        tcp_ms: elapsed,
+        tls_ms: 0,
+        total_ms: elapsed,
+        verdict: ok ? "" : "timeout",
+        message: ok ? "получен ответ DNS по UDP" : "нет ответа DNS по UDP"
+    };
 }
 
 function connection_probe(ctx, target) {
+    if (as_string(target.kind) == "udp_dns")
+        return udp_dns_probe(ctx, target);
     if (as_string(target.kind) == "udp")
         return udp_probe(ctx, target);
     if (as_string(target.kind) == "tcp") {
@@ -737,6 +784,9 @@ function target_verdict(target, dns, connection) {
     if (as_string(connection.verdict) == "skipped")
         return { state: "skipped", verdict: "skipped", message: as_string(connection.message) };
 
+    if (as_string(connection.verdict) == "udp_unconfirmed")
+        return { state: "warning", verdict: "udp_unconfirmed", message: as_string(connection.message) };
+
     if (!dns.ok && !valid_ipv4(as_string(target.host)))
         return { state: "error", verdict: "dns_fail", message: "DNS не отдал адрес: " + as_string(dns.error) };
 
@@ -749,7 +799,7 @@ function target_verdict(target, dns, connection) {
         return { state: "error", verdict: verdict != "" ? verdict : "failed", message: as_string(connection.message) };
     }
 
-    if (as_string(target.kind) == "tcp" || as_string(target.kind) == "udp")
+    if (as_string(target.kind) == "tcp" || as_string(target.kind) == "udp" || as_string(target.kind) == "udp_dns")
         return int(connection.total_ms) > SLOW_THRESHOLD_MS
             ? { state: "warning", verdict: "slow", message: "соединение установлено, но медленно" }
             : { state: "success", verdict: "ok", message: "" };
@@ -1239,6 +1289,10 @@ else if (mode == "capabilities") {
     write_json(capabilities());
     exit(0);
 }
+else if (mode == "fixes")
+    exit(list_fixes());
+else if (mode == "fix")
+    exit(run_fix(ARGV[1]));
 else if (mode == "run") {
     write_json(run_check(ARGV[1], ARGV[2], ARGV[3], ""));
     exit(0);
@@ -1258,7 +1312,7 @@ else if (mode == "netns-teardown") {
     exit(0);
 }
 else if (mode == "xhttp-patch")
-    exit(xhttp_patch());
+    exit(run_fix("xhttp_import"));
 else {
     warn("Unknown mode: ", mode, "\n");
     exit(1);

@@ -9,7 +9,7 @@ $template = Join-Path $root 'installer-template.sh'
 $output = Join-Path $root 'install-forkop-servicecheck.sh'
 $archive = Join-Path $env:TEMP 'forkop-servicecheck-payload.tar.gz'
 
-$version = '1.0.0'
+$version = '1.1.0'
 $builtAt = (Get-Date).ToString('yyyy-MM-dd')
 
 if (Test-Path $archive) { Remove-Item $archive -Force }

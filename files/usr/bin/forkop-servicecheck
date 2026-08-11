@@ -54,6 +54,8 @@ function command_spec(command) {
     let commands = {
         list: [ "list", 0 ],
         capabilities: [ "capabilities", 0 ],
+        fixes: [ "fixes", 0 ],
+        fix: [ "fix", 1 ],
         run: [ "run", 3 ],
         start: [ "start", 3 ],
         status: [ "status", 1 ],
