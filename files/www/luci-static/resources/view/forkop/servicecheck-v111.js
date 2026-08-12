@@ -17,7 +17,7 @@
  */
 
 var BIN = "/usr/bin/forkop-servicecheck";
-var UI_VERSION = "1.1.1"; // Filename uses v111: dots are path separators in LuCI view names.
+var UI_VERSION = "1.2.0"; // Filename stays v111 for compatibility with existing LuCI menu entries.
 var POLL_INTERVAL_MS = 1500;
 var JOB_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -80,18 +80,19 @@ function injectStyles() {
   var css = [
     /* Цвета статусов держим в одном месте: они одинаково читаются */
     /* и на светлой, и на тёмной теме LuCI. */
-    ".fkpsc { --ok:#2f9e44; --warn:#e8a33d; --err:#e03131; --skip:#868e96; --accent:#4a90d9; --card:rgba(127,127,127,.07); }",
-    ".fkpsc-hero { padding:1.1em 1.25em; margin-bottom:1em; border-radius:14px; background:linear-gradient(135deg,rgba(74,144,217,.20),rgba(92,52,168,.12)); border:1px solid rgba(74,144,217,.28); }",
+    ".fkpsc { --ok:#2f9e44; --warn:#e8a33d; --err:#e03131; --skip:#868e96; --accent:#4a90d9; --surface:#fff; --surface-soft:#f1f3f5; --surface-raised:#fff; box-sizing:border-box; padding:1em; border-radius:14px; background:#fff; background:var(--surface); color:#202124; }",
+    ".fkpsc-hero { padding:1.1em 1.25em; margin-bottom:1em; border-radius:14px; background:linear-gradient(135deg,rgba(74,144,217,.20),rgba(92,52,168,.12)),var(--surface-raised); border:1px solid rgba(74,144,217,.35); box-shadow:0 5px 18px rgba(0,0,0,.08); }",
     ".fkpsc-hero h2 { margin:.05em 0 .35em; font-size:1.55em; }",
     ".fkpsc-badges { display:flex; flex-wrap:wrap; gap:.45em; margin-top:.75em; }",
     ".fkpsc-badge { padding:.25em .65em; border-radius:999px; background:rgba(127,127,127,.16); font-size:.84em; }",
-    ".fkpsc-card { padding:1em 1.1em; margin:0 0 1em; border-radius:12px; border:1px solid rgba(127,127,127,.25); background:var(--card); }",
+    ".fkpsc-card { padding:1em 1.1em; margin:0 0 1em; border-radius:12px; border:1px solid rgba(127,127,127,.32); background:var(--surface-raised); box-shadow:0 5px 18px rgba(0,0,0,.10); }",
     ".fkpsc-card h3 { margin:.05em 0 .75em; }",
-    ".fkpsc-tabs { display:flex; gap:.35em; margin:0 0 1em; padding:.25em; border-radius:11px; background:rgba(127,127,127,.10); }",
+    ".fkpsc-tabs { display:flex; gap:.35em; margin:0 0 1em; padding:.25em; border-radius:11px; background:var(--surface-soft); border:1px solid rgba(127,127,127,.24); }",
     ".fkpsc-tab { flex:0 1 auto; padding:.55em .9em; border:0; border-radius:8px; background:transparent; color:inherit; cursor:pointer; font-weight:600; }",
     ".fkpsc-tab.active { color:#fff; background:var(--accent); box-shadow:0 2px 8px rgba(0,0,0,.18); }",
     ".fkpsc-page { display:none; } .fkpsc-page.active { display:block; }",
-    ".fkpsc-fix { padding:.75em; border-radius:9px; background:rgba(127,127,127,.09); margin-bottom:.55em; }",
+    ".fkpsc-editor { box-sizing:border-box; width:100%; min-height:32em; resize:vertical; font:12px/1.45 monospace; white-space:pre; tab-size:2; color:inherit; background:var(--surface-soft); border:1px solid rgba(127,127,127,.4); }",
+    ".fkpsc-fix { padding:.75em; border:1px solid rgba(127,127,127,.25); border-radius:9px; background:var(--surface-soft); margin-bottom:.55em; }",
     ".fkpsc-fix-title { font-weight:600; margin-bottom:.25em; }",
     ".fkpsc-intro { margin-bottom: 1em; line-height: 1.55; max-width: 60em; }",
     ".fkpsc-note { background: rgba(232,163,61,.12); border-left: 3px solid var(--warn); padding: .65em .9em; margin: .9em 0; border-radius: 0 6px 6px 0; line-height: 1.5; }",
@@ -115,7 +116,7 @@ function injectStyles() {
     ".fkpsc-custom-target { flex:1 1 260px; min-width:180px; }",
     ".fkpsc-custom-port { width:7em; }",
     ".fkpsc-custom-port-label { display:flex; gap:.35em; align-items:center; }",
-    ".fkpsc-custom-result { margin:.7em 0 1.15em; padding:.8em .9em; border-radius:9px; border-left:4px solid var(--skip); background:rgba(127,127,127,.08); }",
+    ".fkpsc-custom-result { margin:.7em 0 1.15em; padding:.8em .9em; border-radius:9px; border-left:4px solid var(--skip); background:var(--surface-soft); }",
     ".fkpsc-custom-result.state-success { border-left-color:var(--ok); }",
     ".fkpsc-custom-result.state-warning { border-left-color:var(--warn); }",
     ".fkpsc-custom-result.state-error { border-left-color:var(--err); }",
@@ -128,7 +129,7 @@ function injectStyles() {
 
     /* --- сводка --- */
     ".fkpsc-summary { display: flex; flex-wrap: wrap; gap: .5em; margin: 0 0 1em; }",
-    ".fkpsc-sum { display: inline-flex; align-items: baseline; gap: .4em; padding: .35em .75em; border-radius: 8px; background: rgba(127,127,127,.1); font-size: .92em; }",
+    ".fkpsc-sum { display: inline-flex; align-items: baseline; gap: .4em; padding: .35em .75em; border:1px solid rgba(127,127,127,.25); border-radius: 8px; background:var(--surface-raised); font-size: .92em; }",
     ".fkpsc-sum b { font-size: 1.15em; }",
     ".fkpsc-sum.ok b { color: var(--ok); }",
     ".fkpsc-sum.warn b { color: var(--warn); }",
@@ -136,7 +137,7 @@ function injectStyles() {
 
     /* --- сетка плиток --- */
     ".fkpsc-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); gap: .75em; align-items: start; }",
-    ".fkpsc-tile { border: 1px solid rgba(127,127,127,.3); border-radius: 10px; background: rgba(127,127,127,.05); overflow: hidden; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; position: relative; }",
+    ".fkpsc-tile { border: 1px solid rgba(127,127,127,.35); border-radius: 10px; background:var(--surface-raised); box-shadow:0 3px 12px rgba(0,0,0,.10); overflow: hidden; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; position: relative; }",
     ".fkpsc-tile::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--skip); }",
     ".fkpsc-tile.state-success::before { background: var(--ok); }",
     ".fkpsc-tile.state-warning::before { background: var(--warn); }",
@@ -169,7 +170,7 @@ function injectStyles() {
     "@keyframes fkpsc-fade { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }",
     ".fkpsc-detail-note { opacity: .7; font-size: .9em; margin: .7em 0 .3em; }",
     ".fkpsc-sect { font-size: .82em; text-transform: uppercase; letter-spacing: .06em; opacity: .55; margin: 1em 0 .5em; }",
-    ".fkpsc-row { border-left: 3px solid var(--skip); border-radius: 0 6px 6px 0; background: rgba(127,127,127,.07); padding: .6em .8em; margin-bottom: .5em; }",
+    ".fkpsc-row { border:1px solid rgba(127,127,127,.22); border-left: 3px solid var(--skip); border-radius: 0 6px 6px 0; background:var(--surface-soft); padding: .6em .8em; margin-bottom: .5em; }",
     ".fkpsc-row.state-success { border-left-color: var(--ok); }",
     ".fkpsc-row.state-warning { border-left-color: var(--warn); }",
     ".fkpsc-row.state-error { border-left-color: var(--err); }",
@@ -203,11 +204,15 @@ function injectStyles() {
     ".fkpsc-empty { opacity: .6; padding: 2em 1em; text-align: center; }",
     ".fkpsc-service-tools { display:flex; flex-wrap:wrap; gap:.45em; align-items:center; margin:.45em 0; }",
     ".fkpsc-search { flex:1 1 190px; min-width:150px; }",
+    "@media (prefers-color-scheme:dark) {",
+    "  .fkpsc { --surface:#18191b; --surface-soft:#242629; --surface-raised:#202225; background:#18191b; color:#e7e9ec; }",
+    "}",
     "@media (max-width:600px) {",
+    "  .fkpsc { padding:.55em; border-radius:10px; }",
     "  .fkpsc-hero { padding:.85em .9em; border-radius:10px; }",
     "  .fkpsc-hero h2 { font-size:1.3em; }",
     "  .fkpsc-tabs { position:sticky; top:0; z-index:20; }",
-    "  .fkpsc-tab { flex:1 1 50%; padding:.65em .35em; }",
+    "  .fkpsc-tab { flex:1 1 30%; padding:.65em .35em; }",
     "  .fkpsc-card { padding:.8em; border-radius:9px; }",
     "  .fkpsc-actions .cbi-button { flex:1 1 45%; min-height:2.6em; }",
     "  .fkpsc-chips-pick { gap:.35em; }",
@@ -542,6 +547,9 @@ return view.extend({
       callBin(["fixes"]).catch(function () {
         return { fixes: [] };
       }),
+      callBin(["profiles-get"]).catch(function () {
+        return null;
+      }),
     ]);
   },
 
@@ -551,6 +559,7 @@ return view.extend({
     var capabilities = data[0];
     var catalogue = data[1];
     var fixes = (data[2] && data[2].fixes) || [];
+    var profilesData = data[3];
 
     if (!capabilities || !catalogue) {
       return E("div", { class: "cbi-map fkpsc" }, [
@@ -903,6 +912,7 @@ return view.extend({
 
     var checkTab = E("button", { class: "fkpsc-tab active", type: "button", role: "tab", "aria-selected": "true" }, "Проверка сервисов");
     var fixTab = E("button", { class: "fkpsc-tab", type: "button", role: "tab", "aria-selected": "false" }, "Фикс Forkop");
+    var listsTab = E("button", { class: "fkpsc-tab", type: "button", role: "tab", "aria-selected": "false" }, "Списки");
     var checkPage = E("div", { class: "fkpsc-page active" }, [
       notes.length ? E("div", { class: "fkpsc-note" }, notes.map(function (note) {
         return E("div", {}, note);
@@ -950,19 +960,81 @@ return view.extend({
       tilesNode,
     ]);
     var fixPage = E("div", { class: "fkpsc-page" }, [maintenancePanel]);
+    var profilesEditor = E("textarea", {
+      class: "cbi-input-textarea fkpsc-editor",
+      spellcheck: "false",
+      wrap: "off",
+    }, profilesData && profilesData.config ? JSON.stringify(profilesData.config, null, 2) : "");
+    var saveProfilesButton = E("button", { class: "cbi-button cbi-button-action important", type: "button" }, "Сохранить список");
+    var resetProfilesButton = E("button", { class: "cbi-button cbi-button-negative", type: "button" }, "Вернуть встроенный");
+
+    saveProfilesButton.addEventListener("click", function () {
+      var parsed;
+      try {
+        parsed = JSON.parse(profilesEditor.value);
+      } catch (error) {
+        ui.addNotification(null, E("p", {}, "Ошибка JSON: " + error.message), "error");
+        return;
+      }
+      saveProfilesButton.disabled = true;
+      saveProfilesButton.textContent = "Сохраняю…";
+      callBin(["profiles-save", JSON.stringify(parsed)]).then(function (result) {
+        if (!result.success) {
+          throw new Error(result.message || "не удалось сохранить список");
+        }
+        ui.addNotification(null, E("p", {}, result.message + ". Страница будет обновлена."), "info");
+        window.setTimeout(function () { window.location.reload(); }, 700);
+      }).catch(function (error) {
+        ui.addNotification(null, E("p", {}, error.message || "Не удалось сохранить список"), "error");
+        saveProfilesButton.disabled = false;
+        saveProfilesButton.textContent = "Сохранить список";
+      });
+    });
+
+    resetProfilesButton.addEventListener("click", function () {
+      if (!window.confirm("Удалить пользовательский список и вернуть встроенный?")) {
+        return;
+      }
+      resetProfilesButton.disabled = true;
+      callBin(["profiles-reset"]).then(function (result) {
+        if (!result.success) {
+          throw new Error(result.message || "не удалось восстановить список");
+        }
+        window.location.reload();
+      }).catch(function (error) {
+        ui.addNotification(null, E("p", {}, error.message || "Не удалось восстановить список"), "error");
+        resetProfilesButton.disabled = false;
+      });
+    });
+
+    var listsPage = E("div", { class: "fkpsc-page" }, [
+      E("div", { class: "fkpsc-card" }, [
+        E("h3", {}, "Списки проверок"),
+        E("p", { class: "fkpsc-dim" }, "Редактируйте профили и цели в JSON. Поддерживаются kind: https, http, tcp, udp и udp_dns. Пользовательский список хранится в /etc/forkop-servicecheck/profiles.json и сохраняется при обновлении модуля."),
+        E("p", { class: "fkpsc-dim" }, "Сейчас используется: " + (profilesData && profilesData.source === "custom" ? "пользовательский список" : "встроенный список")),
+        profilesData ? profilesEditor : E("div", { class: "alert-message error" }, "Backend не отдал список проверок."),
+        E("div", { class: "fkpsc-actions", style: "margin-top:1em" }, [saveProfilesButton, resetProfilesButton]),
+      ]),
+    ]);
 
     function showPage(name) {
       var showFix = name === "fix";
-      checkTab.classList.toggle("active", !showFix);
+      var showLists = name === "lists";
+      var showCheck = !showFix && !showLists;
+      checkTab.classList.toggle("active", showCheck);
       fixTab.classList.toggle("active", showFix);
-      checkTab.setAttribute("aria-selected", showFix ? "false" : "true");
+      listsTab.classList.toggle("active", showLists);
+      checkTab.setAttribute("aria-selected", showCheck ? "true" : "false");
       fixTab.setAttribute("aria-selected", showFix ? "true" : "false");
-      checkPage.classList.toggle("active", !showFix);
+      listsTab.setAttribute("aria-selected", showLists ? "true" : "false");
+      checkPage.classList.toggle("active", showCheck);
       fixPage.classList.toggle("active", showFix);
+      listsPage.classList.toggle("active", showLists);
     }
 
     checkTab.addEventListener("click", function () { showPage("check"); });
     fixTab.addEventListener("click", function () { showPage("fix"); });
+    listsTab.addEventListener("click", function () { showPage("lists"); });
 
     return E("div", { class: "cbi-map fkpsc" }, [
       E("div", { class: "fkpsc-hero" }, [
@@ -977,9 +1049,10 @@ return view.extend({
           E("span", { class: "fkpsc-badge" }, capabilities.netns ? "netns доступен" : "только роутер"),
         ]),
       ]),
-      E("div", { class: "fkpsc-tabs", role: "tablist" }, [checkTab, fixTab]),
+      E("div", { class: "fkpsc-tabs", role: "tablist" }, [checkTab, fixTab, listsTab]),
       checkPage,
       fixPage,
+      listsPage,
     ]);
   },
 });

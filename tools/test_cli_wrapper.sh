@@ -36,6 +36,12 @@ printf '%s\n' "$CUSTOM_OUTPUT" | grep -Fxq -- '192.168.2.55'
 [ "$(run_wrapper xhttp_patch | tail -n 1)" = "xhttp-patch" ]
 [ "$(run_wrapper icmp_tproxy_patch | tail -n 1)" = "icmp-tproxy-patch" ]
 [ "$(run_wrapper netns_teardown | tail -n 1)" = "netns-teardown" ]
+[ "$(run_wrapper profiles-get | tail -n 1)" = "profiles-get" ]
+[ "$(run_wrapper profiles-reset | tail -n 1)" = "profiles-reset" ]
+PROFILES_JSON='{"profiles":[{"id":"test","title":"Test","targets":[{"kind":"https","host":"example.com"}]}]}'
+PROFILES_OUTPUT="$(run_wrapper profiles-save "$PROFILES_JSON")"
+[ "$(printf '%s\n' "$PROFILES_OUTPUT" | tail -n 2 | head -n 1)" = "profiles-save" ]
+[ "$(printf '%s\n' "$PROFILES_OUTPUT" | tail -n 1)" = "$PROFILES_JSON" ]
 
 if run_wrapper unknown >/dev/null 2>&1; then
     echo "ERROR: unknown command must fail" >&2

@@ -22,6 +22,9 @@ Available commands:
     cleanup                 Удалить устаревшие задания
     fixes                   Показать разрешённые исправления Forkop
     fix ID                  Применить исправление Forkop из белого списка
+    profiles-get            Показать активный список проверок
+    profiles-save JSON      Проверить и сохранить пользовательский список
+    profiles-reset          Вернуться к встроенному списку
     netns_teardown          Снести временный network namespace
 
 IDS  - список id сервисов через запятую либо 'all'
@@ -51,10 +54,10 @@ command -v ucode >/dev/null 2>&1 || {
 }
 
 case "$COMMAND" in
-    list|capabilities|fixes|cleanup)
+    list|capabilities|fixes|cleanup|profiles-get|profiles-reset)
         exec ucode -L "$LIB_DIR" "$ENGINE" "$COMMAND"
         ;;
-    fix|status)
+    fix|status|profiles-save)
         exec ucode -L "$LIB_DIR" "$ENGINE" "$COMMAND" "${2:-}"
         ;;
     custom)

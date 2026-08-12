@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 INSTALLER = ROOT / "install-forkop-servicecheck.sh"
-PACKAGE = ROOT / "dist" / "luci-app-forkop-servicecheck_1.1.4-r1_all.ipk"
+PACKAGE = ROOT / "dist" / "luci-app-forkop-servicecheck_1.2.0-r1_all.ipk"
 MARKER = "__FORKOP_SC_PAYLOAD__"
 
 
@@ -19,7 +19,7 @@ def assert_shell(name, shell_script):
 
 def main():
     script = INSTALLER.read_text(encoding="utf-8")
-    assert 'VERSION="1.1.4"' in script
+    assert 'VERSION="1.2.0"' in script
     assert "detect_installed_version()" in script
     assert 'INSTALLED_VERSION="$(detect_installed_version || true)"' in script
     assert "sed -n '/^__PAYLOAD_BELOW__$/,$p' \"$0\"" not in script
@@ -37,6 +37,7 @@ def main():
         cli = cli_raw.decode("utf-8")
         engine = tar.extractfile("usr/lib/forkop-servicecheck/probe.uc").read().decode("utf-8")
         view = tar.extractfile("www/luci-static/resources/view/forkop/servicecheck-v111.js").read().decode("utf-8")
+        profiles = tar.extractfile("usr/share/forkop-servicecheck/profiles.json").read().decode("utf-8")
 
     required = {
         "usr/bin/forkop-servicecheck",
@@ -57,6 +58,12 @@ def main():
     assert "    custom)" in cli
     assert 'else if (mode == "custom")' in engine
     assert 'status == 28 && connect_ms <= 0 && remote_ip == ""' in engine
+    assert 'else if (mode == "profiles-save")' in engine
+    assert 'callBin(["profiles-save", JSON.stringify(parsed)])' in view
+    assert '--surface-raised:#fff' in view
+    assert 'background:var(--surface-raised)' in view
+    assert 'MTProto DC' not in profiles
+    assert 'UDP / QUIC / Discord' not in profiles
     assert '"Проверить IP/домен"' in view
     with tarfile.open(PACKAGE, mode="r:gz") as outer:
         data_archive = outer.extractfile("./data.tar.gz").read()

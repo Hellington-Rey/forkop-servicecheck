@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "updated": "2026-08-08",
+  "version": 2,
+  "updated": "2026-08-12",
   "profiles": [
     {
       "id": "baseline",
@@ -17,15 +17,12 @@
       "id": "telegram",
       "title": "Telegram",
       "group": "messenger",
-      "description": "Веб-версия, Bot API и прямые MTProto-подключения к дата-центрам.",
+      "description": "Веб-версия, Bot API и основные домены Telegram.",
       "targets": [
         { "kind": "https", "host": "web.telegram.org", "path": "/", "expect": [200, 301, 302] },
         { "kind": "https", "host": "api.telegram.org", "path": "/", "expect": [200, 302, 404] },
         { "kind": "https", "host": "core.telegram.org", "path": "/", "expect": [200, 301, 302] },
-        { "kind": "https", "host": "t.me", "path": "/", "expect": [200, 301, 302] },
-        { "kind": "tcp", "host": "149.154.167.51", "port": 443, "label": "MTProto DC4 (149.154.167.51)" },
-        { "kind": "tcp", "host": "149.154.175.50", "port": 443, "label": "MTProto DC2 (149.154.175.50)" },
-        { "kind": "tcp", "host": "91.108.56.130", "port": 443, "optional": true, "label": "MTProto DC5 (91.108.56.130)" }
+        { "kind": "https", "host": "t.me", "path": "/", "expect": [200, 301, 302] }
       ]
     },
     {
@@ -208,12 +205,12 @@
     },
     {
       "id": "udp_common",
-      "title": "UDP / QUIC / Discord",
+      "title": "UDP / QUIC",
       "group": "network",
-      "description": "Двусторонняя проверка UDP через DNS-ответы и best-effort отправка QUIC. Точный Discord Voice IP Discovery запускается отдельно для динамического endpoint.",
+      "description": "Двусторонняя проверка UDP через DNS-ответы и best-effort отправка QUIC.",
       "targets": [
-        { "kind": "udp_dns", "host": "1.1.1.1", "port": 53, "query": "discord.com", "label": "Cloudflare DNS UDP :53" },
-        { "kind": "udp_dns", "host": "8.8.8.8", "port": 53, "query": "discord.com", "label": "Google DNS UDP :53", "optional": true },
+        { "kind": "udp_dns", "host": "1.1.1.1", "port": 53, "query": "example.com", "label": "Cloudflare DNS UDP :53" },
+        { "kind": "udp_dns", "host": "8.8.8.8", "port": 53, "query": "example.com", "label": "Google DNS UDP :53", "optional": true },
         { "kind": "udp", "host": "cloudflare.com", "port": 443, "label": "Cloudflare QUIC :443" },
         { "kind": "udp", "host": "google.com", "port": 443, "label": "Google QUIC :443" },
         { "kind": "udp", "host": "g.whatsapp.net", "port": 443, "label": "WhatsApp UDP :443", "optional": true }

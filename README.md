@@ -36,13 +36,13 @@ LuCI → forkop-servicecheck → probe.uc
 Для OpenWrt с opkg:
 
 ```sh
-opkg install luci-app-forkop-servicecheck_1.1.4-r1_all.ipk
+opkg install luci-app-forkop-servicecheck_1.2.0-r1_all.ipk
 ```
 
 Для OpenWrt с apk:
 
 ```sh
-apk add --allow-untrusted ./luci-app-forkop-servicecheck-1.1.4-r1.apk
+apk add --allow-untrusted ./luci-app-forkop-servicecheck-1.2.0-r1.apk
 ```
 
 Установка без пакетного менеджера:
@@ -96,7 +96,7 @@ sh install-forkop-servicecheck.sh --uninstall
 /usr/bin/forkop-servicecheck icmp_tproxy_patch
 ```
 
-Собственные профили сервисов можно разместить в:
+Собственные профили можно редактировать на вкладке «Списки» в LuCI. Они сохраняются в:
 
 ```text
 /etc/forkop-servicecheck/profiles.json

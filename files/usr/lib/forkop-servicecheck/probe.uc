@@ -394,6 +394,105 @@ function load_profiles() {
     return array_or_empty(data.profiles);
 }
 
+function validate_profiles_config(config) {
+    if (type(config) != "object" || type(config.profiles) != "array")
+        return "корневой объект должен содержать массив profiles";
+
+    let profiles = array_or_empty(config.profiles);
+    if (length(profiles) == 0)
+        return "список profiles не может быть пустым";
+    if (length(profiles) > 100)
+        return "допускается не более 100 профилей";
+
+    let seen = {};
+    let allowed_kinds = { https: true, http: true, tcp: true, udp: true, udp_dns: true };
+
+    for (let profile in profiles) {
+        profile = object_or_empty(profile);
+        let id = as_string(profile.id);
+        let title = trim(as_string(profile.title));
+        let targets = array_or_empty(profile.targets);
+
+        if (match(id, /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/) == null)
+            return "некорректный id профиля: " + id;
+        if (seen[id])
+            return "id профиля повторяется: " + id;
+        seen[id] = true;
+        if (title == "")
+            return "у профиля " + id + " не задан title";
+        if (length(targets) == 0 || length(targets) > 50)
+            return "у профиля " + id + " должно быть от 1 до 50 целей";
+
+        for (let target in targets) {
+            target = object_or_empty(target);
+            let kind = as_string(target.kind || "https");
+            let host = trim(as_string(target.host));
+            let port = int(target.port || (kind == "http" ? 80 : 443));
+
+            if (!allowed_kinds[kind])
+                return "неподдерживаемый kind в профиле " + id + ": " + kind;
+            if (host == "" || match(host, /[\s\/]/) != null)
+                return "некорректный host в профиле " + id;
+            if (port < 1 || port > 65535)
+                return "некорректный port в профиле " + id;
+        }
+    }
+
+    return "";
+}
+
+function profiles_get() {
+    let path = profiles_file();
+    let config = read_json_file(path);
+    if (type(config) != "object") {
+        write_json({ success: false, message: "не удалось прочитать список проверок" });
+        return 1;
+    }
+    write_json({ success: true, source: path == PROFILES_OVERRIDE ? "custom" : "built-in", config });
+    return 0;
+}
+
+function profiles_save(payload) {
+    payload = as_string(payload);
+    if (length(payload) == 0 || length(payload) > 131072) {
+        write_json({ success: false, message: "размер списка должен быть от 1 байта до 128 КиБ" });
+        return 1;
+    }
+
+    let config = parse_json(payload);
+    let error = validate_profiles_config(config);
+    if (error != "") {
+        write_json({ success: false, message: error });
+        return 1;
+    }
+
+    if (!run_quiet([ "mkdir", "-p", "/etc/forkop-servicecheck" ])) {
+        write_json({ success: false, message: "не удалось создать /etc/forkop-servicecheck" });
+        return 1;
+    }
+
+    let temporary = PROFILES_OVERRIDE + ".tmp";
+    if (fs.writefile(temporary, sprintf("%J", config) + "\n") == null ||
+        !run_quiet([ "chmod", "0644", temporary ]) ||
+        !run_quiet([ "mv", "-f", temporary, PROFILES_OVERRIDE ])) {
+        fs.unlink(temporary);
+        write_json({ success: false, message: "не удалось сохранить пользовательский список" });
+        return 1;
+    }
+
+    write_json({ success: true, message: "пользовательский список сохранён", profiles: length(config.profiles) });
+    return 0;
+}
+
+function profiles_reset() {
+    if (fs.stat(PROFILES_OVERRIDE) != null && fs.unlink(PROFILES_OVERRIDE) == null) {
+        write_json({ success: false, message: "не удалось удалить пользовательский список" });
+        return 1;
+    }
+    write_json({ success: true, message: "восстановлен встроенный список" });
+    return 0;
+}
+
 function target_label(target) {
     target = object_or_empty(target);
     if (as_string(target.label) != "")
@@ -660,8 +759,8 @@ function tcp_probe_curl(ctx, target) {
         return { reached: false, code: 0, remote_ip: "", tcp_ms: 0, tls_ms: 0, total_ms: elapsed, verdict: "tcp_refused", message: "не удалось установить TCP-соединение" };
 
     // curl can time out after the TCP handshake while it waits for an HTTPS
-    // response. Raw protocols such as Telegram MTProto accept TCP on port 443
-    // but do not have to speak TLS/HTTP. In that case time_connect/remote_ip
+    // response. Raw TCP services can accept connections on port 443 without
+    // speaking TLS/HTTP. In that case time_connect/remote_ip
     // prove that the TCP target is reachable, which is all this probe tests.
     if (status == 28 && connect_ms <= 0 && remote_ip == "")
         return { reached: false, code: 0, remote_ip: "", tcp_ms: 0, tls_ms: 0, total_ms: elapsed, verdict: "timeout", message: "таймаут TCP-соединения" };
@@ -736,7 +835,7 @@ function udp_dns_probe(ctx, target) {
     if (!ctx.tools.nslookup)
         return { reached: false, code: 0, tcp_ms: 0, tls_ms: 0, total_ms: 0, remote_ip: "", verdict: "skipped", message: "нет nslookup для двусторонней UDP-проверки" };
 
-    let query = as_string(target.query || "discord.com");
+    let query = as_string(target.query || "example.com");
     let started = now_ms();
     let result = capture_args(prefixed_args(ctx, [ "nslookup", query, as_string(target.host) ]), true);
     let elapsed = now_ms() - started;
@@ -1471,6 +1570,12 @@ else if (mode == "fixes")
     exit(list_fixes());
 else if (mode == "fix")
     exit(run_fix(ARGV[1]));
+else if (mode == "profiles-get")
+    exit(profiles_get());
+else if (mode == "profiles-save")
+    exit(profiles_save(ARGV[1]));
+else if (mode == "profiles-reset")
+    exit(profiles_reset());
 else if (mode == "custom") {
     let result = custom_check(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
     write_json(result);
