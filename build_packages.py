@@ -23,7 +23,7 @@ FILES_DIR = ROOT / "files"
 OUT_DIR = ROOT / "dist"
 
 PACKAGE = "luci-app-forkop-servicecheck"
-VERSION = "1.1.2"
+VERSION = "1.1.3"
 RELEASE = "r1"
 ARCH = "all"
 LICENSE = "MIT"
@@ -59,6 +59,12 @@ OWNED_DIRS = [
     "./usr/lib/forkop-servicecheck",
     "./usr/share/forkop-servicecheck",
 ]
+
+
+def read_payload(source_path):
+    """Read the text payload using Unix line endings expected by OpenWrt."""
+    data = (FILES_DIR / source_path).read_bytes()
+    return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
 
 POSTINST = """#!/bin/sh
 [ -n "$IPKG_INSTROOT" ] && exit 0
@@ -132,7 +138,7 @@ def build_data_tar():
         entries.append((owned, None, 0o755, True))
 
     for package_path, source_path, mode in PAYLOAD:
-        data = (FILES_DIR / source_path).read_bytes()
+        data = read_payload(source_path)
         installed_size += len(data)
         entries.append((package_path, data, mode, False))
 
@@ -237,7 +243,7 @@ def build_apk_maker():
 
     entries = []
     for package_path, source_path, mode in PAYLOAD:
-        data = (FILES_DIR / source_path).read_bytes()
+        data = read_payload(source_path)
         entries.append((package_path, data, mode, False))
     for owned in OWNED_DIRS:
         entries.append((owned, None, 0o755, True))

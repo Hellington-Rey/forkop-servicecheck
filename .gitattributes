@@ -1,0 +1,2 @@
+*.sh text eol=lf
+files/usr/bin/forkop-servicecheck text eol=lf
