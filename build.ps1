@@ -10,7 +10,7 @@ $output = Join-Path $root 'install-forkop-servicecheck.sh'
 $archive = Join-Path $env:TEMP 'forkop-servicecheck-payload.tar.gz'
 $staging = Join-Path $env:TEMP ("forkop-servicecheck-payload-" + [Guid]::NewGuid().ToString('N'))
 
-$version = '1.1.3'
+$version = '1.1.4'
 $builtAt = (Get-Date).ToString('yyyy-MM-dd')
 
 if (Test-Path $archive) { Remove-Item $archive -Force }

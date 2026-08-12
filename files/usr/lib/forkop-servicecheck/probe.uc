@@ -659,7 +659,11 @@ function tcp_probe_curl(ctx, target) {
     if (status == 7)
         return { reached: false, code: 0, remote_ip: "", tcp_ms: 0, tls_ms: 0, total_ms: elapsed, verdict: "tcp_refused", message: "не удалось установить TCP-соединение" };
 
-    if (status == 28)
+    // curl can time out after the TCP handshake while it waits for an HTTPS
+    // response. Raw protocols such as Telegram MTProto accept TCP on port 443
+    // but do not have to speak TLS/HTTP. In that case time_connect/remote_ip
+    // prove that the TCP target is reachable, which is all this probe tests.
+    if (status == 28 && connect_ms <= 0 && remote_ip == "")
         return { reached: false, code: 0, remote_ip: "", tcp_ms: 0, tls_ms: 0, total_ms: elapsed, verdict: "timeout", message: "таймаут TCP-соединения" };
 
     let measured = connect_ms > 0 ? connect_ms : elapsed;
