@@ -431,7 +431,7 @@ function validate_profiles_config(config) {
 
             if (!allowed_kinds[kind])
                 return "неподдерживаемый kind в профиле " + id + ": " + kind;
-            if (host == "" || match(host, /[\s\/]/) != null)
+            if (host == "" || match(host, /[ \t\r\n\/]/) != null)
                 return "некорректный host в профиле " + id;
             if (port < 1 || port > 65535)
                 return "некорректный port в профиле " + id;

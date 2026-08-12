@@ -17,7 +17,7 @@
  */
 
 var BIN = "/usr/bin/forkop-servicecheck";
-var UI_VERSION = "1.2.0"; // Filename stays v111 for compatibility with existing LuCI menu entries.
+var UI_VERSION = "1.3.0"; // Filename stays v111 for compatibility with existing LuCI menu entries.
 var POLL_INTERVAL_MS = 1500;
 var JOB_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -91,7 +91,24 @@ function injectStyles() {
     ".fkpsc-tab { flex:0 1 auto; padding:.55em .9em; border:0; border-radius:8px; background:transparent; color:inherit; cursor:pointer; font-weight:600; }",
     ".fkpsc-tab.active { color:#fff; background:var(--accent); box-shadow:0 2px 8px rgba(0,0,0,.18); }",
     ".fkpsc-page { display:none; } .fkpsc-page.active { display:block; }",
-    ".fkpsc-editor { box-sizing:border-box; width:100%; min-height:32em; resize:vertical; font:12px/1.45 monospace; white-space:pre; tab-size:2; color:inherit; background:var(--surface-soft); border:1px solid rgba(127,127,127,.4); }",
+    ".fkpsc-list-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:.55em; margin:.8em 0 1em; }",
+    ".fkpsc-list-toolbar .fkpsc-source { margin-right:auto; padding:.3em .7em; border-radius:999px; background:var(--surface-soft); }",
+    ".fkpsc-profile-edit { padding:1em; margin:0 0 1em; border:1px solid rgba(127,127,127,.35); border-radius:12px; background:var(--surface-soft); box-shadow:0 3px 12px rgba(0,0,0,.08); }",
+    ".fkpsc-profile-head { display:flex; align-items:center; gap:.55em; margin-bottom:.8em; }",
+    ".fkpsc-profile-number { display:inline-flex; align-items:center; justify-content:center; min-width:2em; height:2em; border-radius:50%; color:#fff; background:var(--accent); font-weight:700; }",
+    ".fkpsc-profile-name { flex:1 1 auto; font-size:1.05em; font-weight:700; overflow-wrap:anywhere; }",
+    ".fkpsc-editor-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75em; }",
+    ".fkpsc-editor-field { display:flex; flex-direction:column; gap:.3em; min-width:0; }",
+    ".fkpsc-editor-field.wide { grid-column:1/-1; }",
+    ".fkpsc-editor-field > span { font-size:.82em; font-weight:600; opacity:.72; }",
+    ".fkpsc-editor-field input, .fkpsc-editor-field select, .fkpsc-editor-field textarea { box-sizing:border-box; width:100%; color:inherit; background:var(--surface-raised); border:1px solid rgba(127,127,127,.38); border-radius:7px; }",
+    ".fkpsc-editor-field textarea { min-height:4.8em; resize:vertical; }",
+    ".fkpsc-targets-title { display:flex; align-items:center; justify-content:space-between; gap:.5em; margin:1em 0 .55em; font-weight:700; }",
+    ".fkpsc-target-edit { margin:.55em 0; padding:.8em; border:1px solid rgba(127,127,127,.28); border-radius:9px; background:var(--surface-raised); }",
+    ".fkpsc-target-head { display:flex; align-items:center; gap:.45em; margin-bottom:.65em; }",
+    ".fkpsc-target-head b { flex:1 1 auto; }",
+    ".fkpsc-icon-button { min-width:2.35em; padding:.35em .55em; }",
+    ".fkpsc-add-profile { width:100%; min-height:3.2em; border:1px dashed var(--accent); border-radius:10px; background:var(--surface-soft); color:inherit; font-weight:700; cursor:pointer; }",
     ".fkpsc-fix { padding:.75em; border:1px solid rgba(127,127,127,.25); border-radius:9px; background:var(--surface-soft); margin-bottom:.55em; }",
     ".fkpsc-fix-title { font-weight:600; margin-bottom:.25em; }",
     ".fkpsc-intro { margin-bottom: 1em; line-height: 1.55; max-width: 60em; }",
@@ -214,6 +231,10 @@ function injectStyles() {
     "  .fkpsc-tabs { position:sticky; top:0; z-index:20; }",
     "  .fkpsc-tab { flex:1 1 30%; padding:.65em .35em; }",
     "  .fkpsc-card { padding:.8em; border-radius:9px; }",
+    "  .fkpsc-editor-grid { grid-template-columns:1fr; }",
+    "  .fkpsc-editor-field.wide { grid-column:auto; }",
+    "  .fkpsc-profile-edit { padding:.75em; }",
+    "  .fkpsc-profile-head { flex-wrap:wrap; }",
     "  .fkpsc-actions .cbi-button { flex:1 1 45%; min-height:2.6em; }",
     "  .fkpsc-chips-pick { gap:.35em; }",
     "  .fkpsc-pick { padding:.42em .65em; }",
@@ -560,6 +581,11 @@ return view.extend({
     var catalogue = data[1];
     var fixes = (data[2] && data[2].fixes) || [];
     var profilesData = data[3];
+    var profilesDraft = profilesData && profilesData.config ?
+      JSON.parse(JSON.stringify(profilesData.config)) : { version: 2, profiles: [] };
+    if (!Array.isArray(profilesDraft.profiles)) {
+      profilesDraft.profiles = [];
+    }
 
     if (!capabilities || !catalogue) {
       return E("div", { class: "cbi-map fkpsc" }, [
@@ -960,25 +986,198 @@ return view.extend({
       tilesNode,
     ]);
     var fixPage = E("div", { class: "fkpsc-page" }, [maintenancePanel]);
-    var profilesEditor = E("textarea", {
-      class: "cbi-input-textarea fkpsc-editor",
-      spellcheck: "false",
-      wrap: "off",
-    }, profilesData && profilesData.config ? JSON.stringify(profilesData.config, null, 2) : "");
+    var profilesCardsNode = E("div", {});
     var saveProfilesButton = E("button", { class: "cbi-button cbi-button-action important", type: "button" }, "Сохранить список");
     var resetProfilesButton = E("button", { class: "cbi-button cbi-button-negative", type: "button" }, "Вернуть встроенный");
+    var addProfileButton = E("button", { class: "fkpsc-add-profile", type: "button" }, "+ Добавить категорию");
+    saveProfilesButton.disabled = !profilesData;
+    resetProfilesButton.disabled = !profilesData;
 
-    saveProfilesButton.addEventListener("click", function () {
-      var parsed;
-      try {
-        parsed = JSON.parse(profilesEditor.value);
-      } catch (error) {
-        ui.addNotification(null, E("p", {}, "Ошибка JSON: " + error.message), "error");
+    function editorField(label, value, onInput, options) {
+      options = options || {};
+      var control;
+      if (options.textarea) {
+        control = E("textarea", { placeholder: options.placeholder || "" }, value == null ? "" : String(value));
+      } else {
+        var attrs = {
+          type: options.type || "text",
+          class: "cbi-input-text",
+          value: value == null ? "" : String(value),
+          placeholder: options.placeholder || "",
+        };
+        if (options.min != null) {
+          attrs.min = String(options.min);
+        }
+        if (options.max != null) {
+          attrs.max = String(options.max);
+        }
+        control = E("input", attrs);
+      }
+      control.addEventListener("input", function () { onInput(control.value); });
+      return E("label", { class: "fkpsc-editor-field" + (options.wide ? " wide" : "") }, [
+        E("span", {}, label),
+        control,
+      ]);
+    }
+
+    function moveEditorItem(items, index, direction) {
+      var destination = index + direction;
+      if (destination < 0 || destination >= items.length) {
         return;
       }
+      var item = items.splice(index, 1)[0];
+      items.splice(destination, 0, item);
+      renderProfilesCards();
+    }
+
+    function editorIconButton(text, title, onClick, extraClass) {
+      var button = E("button", {
+        class: "cbi-button fkpsc-icon-button" + (extraClass ? " " + extraClass : ""),
+        type: "button",
+        title: title,
+      }, text);
+      button.addEventListener("click", onClick);
+      return button;
+    }
+
+    function renderTargetEditor(profile, profileIndex, target, targetIndex) {
+      var kinds = [
+        ["https", "HTTPS"],
+        ["http", "HTTP"],
+        ["tcp", "TCP"],
+        ["udp", "UDP"],
+        ["udp_dns", "UDP с DNS-ответом"],
+      ];
+      var kind = target.kind || "https";
+      var kindSelect = E("select", { class: "cbi-input-select" }, kinds.map(function (entry) {
+        return E("option", { value: entry[0], selected: kind === entry[0] ? "" : null }, entry[1]);
+      }));
+      kindSelect.addEventListener("change", function () {
+        target.kind = kindSelect.value;
+        renderProfilesCards();
+      });
+
+      var optionalInput = E("input", { type: "checkbox", checked: target.optional ? "" : null });
+      optionalInput.addEventListener("change", function () { target.optional = optionalInput.checked; });
+
+      var fields = [
+        E("label", { class: "fkpsc-editor-field" }, [E("span", {}, "Тип проверки"), kindSelect]),
+        editorField("Домен или IP", target.host || "", function (value) { target.host = value.trim(); }, { placeholder: "example.com или 1.1.1.1" }),
+        editorField("Порт", target.port || (kind === "http" ? 80 : 443), function (value) {
+          if (value === "") {
+            delete target.port;
+          } else {
+            target.port = parseInt(value, 10) || 0;
+          }
+        }, { type: "number", min: 1, max: 65535 }),
+        editorField("Подпись", target.label || "", function (value) { target.label = value; }, { placeholder: "Необязательно" }),
+      ];
+
+      if (kind === "https" || kind === "http") {
+        fields.push(editorField("Путь", target.path || "/", function (value) { target.path = value || "/"; }, { placeholder: "/" }));
+        fields.push(editorField("Допустимые коды", (Array.isArray(target.expect) ? target.expect : []).join(", "), function (value) {
+          target.expect = value.split(/[ ,;]+/).map(function (part) { return parseInt(part, 10); })
+            .filter(function (code) { return code >= 100 && code <= 999; });
+        }, { placeholder: "200, 301, 302" }));
+      }
+      if (kind === "udp_dns") {
+        fields.push(editorField("DNS-запрос", target.query || "example.com", function (value) { target.query = value.trim(); }, { placeholder: "example.com" }));
+      }
+      fields.push(E("label", { class: "fkpsc-editor-field" }, [
+        E("span", {}, "Необязательная цель"),
+        E("span", {}, [optionalInput, " Не считать ошибкой всей категории"]),
+      ]));
+
+      return E("div", { class: "fkpsc-target-edit" }, [
+        E("div", { class: "fkpsc-target-head" }, [
+          E("b", {}, "Цель " + (targetIndex + 1) + (target.label ? " · " + target.label : "")),
+          editorIconButton("↑", "Поднять цель", function () { moveEditorItem(profile.targets, targetIndex, -1); }),
+          editorIconButton("↓", "Опустить цель", function () { moveEditorItem(profile.targets, targetIndex, 1); }),
+          editorIconButton("×", "Удалить цель", function () {
+            if (profile.targets.length <= 1) {
+              ui.addNotification(null, E("p", {}, "В категории должна остаться хотя бы одна цель."), "warning");
+              return;
+            }
+            profile.targets.splice(targetIndex, 1);
+            renderProfilesCards();
+          }, "cbi-button-negative"),
+        ]),
+        E("div", { class: "fkpsc-editor-grid" }, fields),
+      ]);
+    }
+
+    function renderProfileEditor(profile, profileIndex) {
+      profile.targets = Array.isArray(profile.targets) ? profile.targets : [];
+      var profileName = E("div", { class: "fkpsc-profile-name" }, profile.title || "Без названия");
+      var targetsNode = E("div", {}, profile.targets.map(function (target, targetIndex) {
+        return renderTargetEditor(profile, profileIndex, target, targetIndex);
+      }));
+      var addTargetButton = E("button", { class: "cbi-button cbi-button-add", type: "button" }, "+ Добавить цель");
+      addTargetButton.addEventListener("click", function () {
+        profile.targets.push({ kind: "https", host: "example.com", path: "/", expect: [200, 301, 302] });
+        renderProfilesCards();
+      });
+
+      return E("div", { class: "fkpsc-profile-edit" }, [
+        E("div", { class: "fkpsc-profile-head" }, [
+          E("span", { class: "fkpsc-profile-number" }, String(profileIndex + 1)),
+          profileName,
+          editorIconButton("↑", "Поднять категорию", function () { moveEditorItem(profilesDraft.profiles, profileIndex, -1); }),
+          editorIconButton("↓", "Опустить категорию", function () { moveEditorItem(profilesDraft.profiles, profileIndex, 1); }),
+          editorIconButton("×", "Удалить категорию", function () {
+            if (!window.confirm("Удалить категорию «" + (profile.title || profile.id) + "»?")) {
+              return;
+            }
+            profilesDraft.profiles.splice(profileIndex, 1);
+            renderProfilesCards();
+          }, "cbi-button-negative"),
+        ]),
+        E("div", { class: "fkpsc-editor-grid" }, [
+          editorField("Название категории", profile.title || "", function (value) {
+            profile.title = value;
+            profileName.textContent = value || "Без названия";
+          }, { placeholder: "Например, Telegram" }),
+          editorField("ID", profile.id || "", function (value) { profile.id = value.trim(); }, { placeholder: "telegram" }),
+          editorField("Группа", profile.group || "", function (value) { profile.group = value.trim(); }, { placeholder: "messenger, video, network…" }),
+          editorField("Описание", profile.description || "", function (value) { profile.description = value; }, { textarea: true, wide: true }),
+        ]),
+        E("div", { class: "fkpsc-targets-title" }, [
+          E("span", {}, "Цели проверки · " + profile.targets.length),
+          addTargetButton,
+        ]),
+        targetsNode,
+      ]);
+    }
+
+    function renderProfilesCards() {
+      if (!profilesDraft.profiles.length) {
+        profilesCardsNode.replaceChildren(E("div", { class: "fkpsc-empty" }, "Категорий пока нет. Добавьте первую."));
+        return;
+      }
+      profilesCardsNode.replaceChildren.apply(profilesCardsNode, profilesDraft.profiles.map(renderProfileEditor));
+    }
+
+    addProfileButton.addEventListener("click", function () {
+      var index = 1;
+      var used = {};
+      profilesDraft.profiles.forEach(function (profile) { used[profile.id] = true; });
+      while (used["custom_" + index]) {
+        index++;
+      }
+      profilesDraft.profiles.push({
+        id: "custom_" + index,
+        title: "Новая категория",
+        group: "custom",
+        description: "",
+        targets: [{ kind: "https", host: "example.com", path: "/", expect: [200, 301, 302] }],
+      });
+      renderProfilesCards();
+    });
+
+    saveProfilesButton.addEventListener("click", function () {
       saveProfilesButton.disabled = true;
       saveProfilesButton.textContent = "Сохраняю…";
-      callBin(["profiles-save", JSON.stringify(parsed)]).then(function (result) {
+      callBin(["profiles-save", JSON.stringify(profilesDraft)]).then(function (result) {
         if (!result.success) {
           throw new Error(result.message || "не удалось сохранить список");
         }
@@ -1007,13 +1206,19 @@ return view.extend({
       });
     });
 
+    renderProfilesCards();
+
     var listsPage = E("div", { class: "fkpsc-page" }, [
       E("div", { class: "fkpsc-card" }, [
         E("h3", {}, "Списки проверок"),
-        E("p", { class: "fkpsc-dim" }, "Редактируйте профили и цели в JSON. Поддерживаются kind: https, http, tcp, udp и udp_dns. Пользовательский список хранится в /etc/forkop-servicecheck/profiles.json и сохраняется при обновлении модуля."),
-        E("p", { class: "fkpsc-dim" }, "Сейчас используется: " + (profilesData && profilesData.source === "custom" ? "пользовательский список" : "встроенный список")),
-        profilesData ? profilesEditor : E("div", { class: "alert-message error" }, "Backend не отдал список проверок."),
-        E("div", { class: "fkpsc-actions", style: "margin-top:1em" }, [saveProfilesButton, resetProfilesButton]),
+        E("p", { class: "fkpsc-dim" }, "Редактируйте список обычными полями — код и JSON трогать не нужно. Пользовательская копия хранится в /etc/forkop-servicecheck/profiles.json и сохраняется при обновлении модуля."),
+        E("div", { class: "fkpsc-list-toolbar" }, [
+          E("span", { class: "fkpsc-source" }, "Сейчас: " + (profilesData && profilesData.source === "custom" ? "пользовательский список" : "встроенный список")),
+          saveProfilesButton,
+          resetProfilesButton,
+        ]),
+        profilesData ? profilesCardsNode : E("div", { class: "alert-message error" }, "Backend не отдал список проверок."),
+        profilesData ? addProfileButton : "",
       ]),
     ]);
 

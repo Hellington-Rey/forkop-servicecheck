@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 INSTALLER = ROOT / "install-forkop-servicecheck.sh"
-PACKAGE = ROOT / "dist" / "luci-app-forkop-servicecheck_1.2.0-r1_all.ipk"
+PACKAGE = ROOT / "dist" / "luci-app-forkop-servicecheck_1.3.0-r1_all.ipk"
 MARKER = "__FORKOP_SC_PAYLOAD__"
 
 
@@ -19,7 +19,7 @@ def assert_shell(name, shell_script):
 
 def main():
     script = INSTALLER.read_text(encoding="utf-8")
-    assert 'VERSION="1.2.0"' in script
+    assert 'VERSION="1.3.0"' in script
     assert "detect_installed_version()" in script
     assert 'INSTALLED_VERSION="$(detect_installed_version || true)"' in script
     assert "sed -n '/^__PAYLOAD_BELOW__$/,$p' \"$0\"" not in script
@@ -59,7 +59,11 @@ def main():
     assert 'else if (mode == "custom")' in engine
     assert 'status == 28 && connect_ms <= 0 && remote_ip == ""' in engine
     assert 'else if (mode == "profiles-save")' in engine
-    assert 'callBin(["profiles-save", JSON.stringify(parsed)])' in view
+    assert 'callBin(["profiles-save", JSON.stringify(profilesDraft)])' in view
+    assert 'function renderProfilesCards()' in view
+    assert 'Добавить категорию' in view
+    assert 'Редактируйте список обычными полями' in view
+    assert 'match(host, /[ \\t\\r\\n\\/]/)' in engine
     assert '--surface-raised:#fff' in view
     assert 'background:var(--surface-raised)' in view
     assert 'MTProto DC' not in profiles
