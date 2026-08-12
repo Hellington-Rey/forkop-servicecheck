@@ -36,13 +36,13 @@ LuCI → forkop-servicecheck → probe.uc
 Для OpenWrt с opkg:
 
 ```sh
-opkg install luci-app-forkop-servicecheck_1.1.1-r1_all.ipk
+opkg install luci-app-forkop-servicecheck_1.1.2-r1_all.ipk
 ```
 
 Для OpenWrt с apk:
 
 ```sh
-apk add --allow-untrusted ./luci-app-forkop-servicecheck-1.1.1-r1.apk
+apk add --allow-untrusted ./luci-app-forkop-servicecheck-1.1.2-r1.apk
 ```
 
 Установка без пакетного менеджера:

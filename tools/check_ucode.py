@@ -174,6 +174,10 @@ def main():
         p = Path(path)
         text = p.read_text(encoding="utf-8")
 
+        if text.startswith("#!/bin/sh"):
+            print(f"OK   {p.name}: POSIX shell wrapper (check with sh -n)")
+            continue
+
         if p.suffix == ".json":
             try:
                 json.loads(text)

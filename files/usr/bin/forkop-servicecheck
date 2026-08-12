@@ -1,100 +1,81 @@
-#!/usr/bin/ucode
+#!/bin/sh
 
-// CLI-обёртка модуля проверки сервисов Forkop.
-// Отдельный бинарь нужен, чтобы у LuCI-страницы был свой ACL и мы не трогали
-// ни один файл самого forkop.
+# POSIX shell wrapper for the ucode probe engine. Do not use an absolute ucode
+# shebang: OpenWrt builds may expose ucode through PATH at another location.
 
-let fs = require("fs");
+LIB_DIR="${FORKOP_SC_LIB:-/usr/lib/forkop-servicecheck}"
+ENGINE="$LIB_DIR/probe.uc"
+BIN_PATH="/usr/bin/forkop-servicecheck"
 
-const LIB_DIR = getenv("FORKOP_SC_LIB") || "/usr/lib/forkop-servicecheck";
-const ENGINE = LIB_DIR + "/probe.uc";
-const BIN_PATH = "/usr/bin/forkop-servicecheck";
+show_help() {
+    cat <<EOF
+Usage: $BIN_PATH COMMAND [ARGS]
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
+Available commands:
+    list                    Показать доступные профили сервисов
+    capabilities            Показать возможности роутера (curl, dig, netns, fakeip)
+    custom HOST [PORT] [MODE] [IP]
+                            Проверить любой IPv4/домен и маршрут через sing-box
+    run IDS [MODE] [IP]     Проверить сервисы синхронно и напечатать JSON
+    start IDS [MODE] [IP]   Запустить проверку в фоне, вернуть job_id
+    status JOB_ID           Показать состояние фоновой проверки
+    cleanup                 Удалить устаревшие задания
+    fixes                   Показать разрешённые исправления Forkop
+    fix ID                  Применить исправление Forkop из белого списка
+    netns_teardown          Снести временный network namespace
+
+IDS  - список id сервисов через запятую либо 'all'
+MODE - router (по умолчанию) или netns
+IP   - желаемый адрес клиента для режима netns
+
+Примеры:
+    $BIN_PATH custom example.com 443 router
+    $BIN_PATH run telegram,youtube
+    $BIN_PATH run all netns
+EOF
 }
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+COMMAND="${1:-}"
+case "$COMMAND" in
+    "") show_help; exit 1 ;;
+    -h|--help|help) show_help; exit 0 ;;
+esac
+
+[ -f "$ENGINE" ] || {
+    echo "Error: engine '$ENGINE' is missing" >&2
+    exit 1
+}
+command -v ucode >/dev/null 2>&1 || {
+    echo "Error: ucode is not installed or is not available in PATH" >&2
+    exit 1
 }
 
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
-}
-
-function normalize_status(status) {
-    status = int(status);
-    if (status < 0)
-        return 1;
-    return status > 255 ? int(status / 256) : status;
-}
-
-function show_help() {
-    print("Usage: ", BIN_PATH, " COMMAND [ARGS]\n\n");
-    print("Available commands:\n");
-    print("    list                    Показать доступные профили сервисов\n");
-    print("    capabilities            Показать возможности роутера (curl, dig, netns, fakeip)\n");
-    print("    custom HOST [PORT] [MODE] [IP]\n");
-    print("                            Проверить любой IPv4/домен и маршрут через sing-box\n");
-    print("    run IDS [MODE] [IP]     Проверить сервисы синхронно и напечатать JSON\n");
-    print("    start IDS [MODE] [IP]   Запустить проверку в фоне, вернуть job_id\n");
-    print("    status JOB_ID           Показать состояние фоновой проверки\n");
-    print("    cleanup                 Удалить устаревшие задания\n");
-    print("    fixes                   Показать разрешённые исправления Forkop\n");
-    print("    fix ID                  Применить исправление Forkop из белого списка\n");
-    print("    netns_teardown          Снести временный network namespace\n\n");
-    print("IDS  - список id сервисов через запятую либо 'all'\n");
-    print("MODE - router (по умолчанию) или netns\n");
-    print("IP   - желаемый адрес клиента для режима netns\n\n");
-    print("Примеры:\n");
-    print("    ", BIN_PATH, " run telegram,youtube\n");
-    print("    ", BIN_PATH, " run all netns\n");
-}
-
-function command_spec(command) {
-    let commands = {
-        list: [ "list", 0 ],
-        capabilities: [ "capabilities", 0 ],
-        custom: [ "custom", 4 ],
-        fixes: [ "fixes", 0 ],
-        fix: [ "fix", 1 ],
-        run: [ "run", 3 ],
-        start: [ "start", 3 ],
-        status: [ "status", 1 ],
-        cleanup: [ "cleanup", 0 ],
-        xhttp_patch: [ "xhttp-patch", 0 ],
-        icmp_tproxy_patch: [ "icmp-tproxy-patch", 0 ],
-        netns_teardown: [ "netns-teardown", 0 ]
-    };
-
-    return commands[as_string(command)];
-}
-
-let command = as_string(ARGV[0]);
-
-if (command == "" || command == "help" || command == "-h" || command == "--help") {
-    show_help();
-    exit(command == "" ? 1 : 0);
-}
-
-let spec = command_spec(command);
-if (spec == null) {
-    warn("Error: unknown command '", command, "'\n\n");
-    show_help();
-    exit(1);
-}
-
-if (fs.stat(ENGINE) == null) {
-    warn("Error: engine '", ENGINE, "' is missing\n");
-    exit(1);
-}
-
-let args = [ "ucode", "-L", LIB_DIR, ENGINE, spec[0] ];
-let count = int(spec[1]);
-for (let i = 0; i < count; i++)
-    push(args, as_string(ARGV[i + 1]));
-
-exit(normalize_status(system(command_from_args(args))));
+case "$COMMAND" in
+    list|capabilities|fixes|cleanup)
+        exec ucode -L "$LIB_DIR" "$ENGINE" "$COMMAND"
+        ;;
+    fix|status)
+        exec ucode -L "$LIB_DIR" "$ENGINE" "$COMMAND" "${2:-}"
+        ;;
+    custom)
+        exec ucode -L "$LIB_DIR" "$ENGINE" custom "${2:-}" "${3:-}" "${4:-}" "${5:-}"
+        ;;
+    run|start)
+        exec ucode -L "$LIB_DIR" "$ENGINE" "$COMMAND" "${2:-}" "${3:-}" "${4:-}"
+        ;;
+    xhttp_patch)
+        exec ucode -L "$LIB_DIR" "$ENGINE" xhttp-patch
+        ;;
+    icmp_tproxy_patch)
+        exec ucode -L "$LIB_DIR" "$ENGINE" icmp-tproxy-patch
+        ;;
+    netns_teardown)
+        exec ucode -L "$LIB_DIR" "$ENGINE" netns-teardown
+        ;;
+    *)
+        echo "Error: unknown command '$COMMAND'" >&2
+        echo >&2
+        show_help >&2
+        exit 1
+        ;;
+esac

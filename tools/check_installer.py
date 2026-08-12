@@ -13,7 +13,7 @@ MARKER = "__FORKOP_SC_PAYLOAD__"
 
 def main():
     script = INSTALLER.read_text(encoding="utf-8")
-    assert 'VERSION="1.1.1"' in script
+    assert 'VERSION="1.1.2"' in script
     assert "detect_installed_version()" in script
     assert 'INSTALLED_VERSION="$(detect_installed_version || true)"' in script
     assert "sed -n '/^__PAYLOAD_BELOW__$/,$p' \"$0\"" not in script
@@ -40,7 +40,11 @@ def main():
     }
     missing = required - names
     assert not missing, f"missing payload files: {sorted(missing)}"
-    assert 'custom: [ "custom", 4 ]' in cli
+    assert cli.startswith("#!/bin/sh\n")
+    assert "\r\n" not in cli
+    assert "#!/usr/bin/ucode" not in cli
+    assert "command -v ucode" in cli
+    assert "    custom)" in cli
     assert 'else if (mode == "custom")' in engine
     assert '"Проверить IP/домен"' in view
     print(f"installer OK: {len(archive)} bytes, {len(names)} entries")

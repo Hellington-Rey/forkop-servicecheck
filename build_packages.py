@@ -23,7 +23,7 @@ FILES_DIR = ROOT / "files"
 OUT_DIR = ROOT / "dist"
 
 PACKAGE = "luci-app-forkop-servicecheck"
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 RELEASE = "r1"
 ARCH = "all"
 LICENSE = "MIT"

@@ -154,6 +154,8 @@ extract_payload || fail "Не удалось распаковать полезн
 
 # --- Проверка синтаксиса до подмены живых файлов ----------------------------
 
+command -v ucode >/dev/null 2>&1 || fail "Не найден ucode. Установите пакет ucode и повторите установку."
+
 SYNTAX_CHECK_WORKS=0
 printf 'print("ok");\n' > "$TMP_DIR/.syntax-probe.uc"
 if ucode -c -o /dev/null "$TMP_DIR/.syntax-probe.uc" >/dev/null 2>&1; then
@@ -161,16 +163,18 @@ if ucode -c -o /dev/null "$TMP_DIR/.syntax-probe.uc" >/dev/null 2>&1; then
 fi
 
 if [ "$SYNTAX_CHECK_WORKS" = "1" ]; then
-    for file in "$TMP_DIR/usr/lib/forkop-servicecheck/probe.uc" "$TMP_DIR/usr/bin/forkop-servicecheck"; do
-        if ! ucode -c -o /dev/null "$file" >/dev/null 2>&1; then
-            printf '\n'
-            ucode -c -o /dev/null "$file" || true
-            fail "Синтаксическая ошибка в $(basename "$file") - установка отменена, система не тронута."
-        fi
-    done
+    if ! ucode -c -o /dev/null "$TMP_DIR/usr/lib/forkop-servicecheck/probe.uc" >/dev/null 2>&1; then
+        printf '\n'
+        ucode -c -o /dev/null "$TMP_DIR/usr/lib/forkop-servicecheck/probe.uc" || true
+        fail "Синтаксическая ошибка в probe.uc - установка отменена, система не тронута."
+    fi
     log "Синтаксис ucode-файлов в порядке"
 else
     log "Внимание: ucode -c недоступен, пропускаю проверку синтаксиса"
+fi
+
+if ! sh -n "$TMP_DIR/usr/bin/forkop-servicecheck" >/dev/null 2>&1; then
+    fail "Синтаксическая ошибка в forkop-servicecheck - установка отменена, система не тронута."
 fi
 
 # --- Установка --------------------------------------------------------------
