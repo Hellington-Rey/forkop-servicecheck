@@ -17,7 +17,8 @@
  */
 
 var BIN = "/usr/bin/forkop-servicecheck";
-var UI_VERSION = "1.3.0"; // Filename stays v111 for compatibility with existing LuCI menu entries.
+var UI_VERSION = "1.3.1"; // Filename stays v111 for compatibility with existing LuCI menu entries.
+var THEME_STORAGE_KEY = "forkop-servicecheck-theme";
 var POLL_INTERVAL_MS = 1500;
 var JOB_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -80,7 +81,20 @@ function injectStyles() {
   var css = [
     /* Цвета статусов держим в одном месте: они одинаково читаются */
     /* и на светлой, и на тёмной теме LuCI. */
-    ".fkpsc { --ok:#2f9e44; --warn:#e8a33d; --err:#e03131; --skip:#868e96; --accent:#4a90d9; --surface:#fff; --surface-soft:#f1f3f5; --surface-raised:#fff; box-sizing:border-box; padding:1em; border-radius:14px; background:#fff; background:var(--surface); color:#202124; }",
+    ".fkpsc { --ok:#2f9e44; --warn:#e8a33d; --err:#e03131; --skip:#868e96; --accent:#367fc7; --surface:#f4f6f8; --surface-soft:#e9edf1; --surface-raised:#fff; --text:#17191c; --muted:#505862; --field:#fff; --field-text:#17191c; --field-border:#77818c; box-sizing:border-box; padding:1em; border-radius:14px; background:var(--surface); color:var(--text) !important; color-scheme:light; }",
+    ".fkpsc.theme-light { --accent:#367fc7; --surface:#f4f6f8; --surface-soft:#e9edf1; --surface-raised:#fff; --text:#17191c; --muted:#505862; --field:#fff; --field-text:#17191c; --field-border:#77818c; color-scheme:light; }",
+    ".fkpsc.theme-dark { --accent:#55a7ef; --surface:#15171a; --surface-soft:#24282d; --surface-raised:#1d2024; --text:#f1f4f7; --muted:#b7c0ca; --field:#101215; --field-text:#f5f7fa; --field-border:#7b8794; color-scheme:dark; }",
+    ".fkpsc h1, .fkpsc h2, .fkpsc h3, .fkpsc h4, .fkpsc h5, .fkpsc h6, .fkpsc label, .fkpsc b, .fkpsc strong { color:var(--text) !important; }",
+    ".fkpsc p, .fkpsc div, .fkpsc span { border-color:inherit; }",
+    ".fkpsc input:not([type=radio]):not([type=checkbox]), .fkpsc select, .fkpsc textarea { color:var(--field-text) !important; background:var(--field) !important; border-color:var(--field-border) !important; }",
+    ".fkpsc input::placeholder, .fkpsc textarea::placeholder { color:var(--muted) !important; opacity:.85; }",
+    ".fkpsc input[type=radio], .fkpsc input[type=checkbox] { accent-color:var(--accent); }",
+    ".fkpsc .fkpsc-dim, .fkpsc .fkpsc-meta, .fkpsc .fkpsc-tile-status { color:var(--muted) !important; opacity:1; }",
+    ".fkpsc-theme-line { display:flex; align-items:center; justify-content:space-between; gap:1em; margin-bottom:.45em; }",
+    ".fkpsc-theme-line h2 { margin:0; }",
+    ".fkpsc-theme-switch { display:inline-flex; gap:.2em; padding:.2em; border:1px solid rgba(127,127,127,.35); border-radius:9px; background:var(--surface-soft); }",
+    ".fkpsc-theme-button { padding:.35em .65em; border:0; border-radius:6px; background:transparent; color:var(--text) !important; cursor:pointer; font-size:.86em; font-weight:600; }",
+    ".fkpsc-theme-button.active { color:#fff !important; background:var(--accent); box-shadow:0 2px 7px rgba(0,0,0,.18); }",
     ".fkpsc-hero { padding:1.1em 1.25em; margin-bottom:1em; border-radius:14px; background:linear-gradient(135deg,rgba(74,144,217,.20),rgba(92,52,168,.12)),var(--surface-raised); border:1px solid rgba(74,144,217,.35); box-shadow:0 5px 18px rgba(0,0,0,.08); }",
     ".fkpsc-hero h2 { margin:.05em 0 .35em; font-size:1.55em; }",
     ".fkpsc-badges { display:flex; flex-wrap:wrap; gap:.45em; margin-top:.75em; }",
@@ -101,7 +115,7 @@ function injectStyles() {
     ".fkpsc-editor-field { display:flex; flex-direction:column; gap:.3em; min-width:0; }",
     ".fkpsc-editor-field.wide { grid-column:1/-1; }",
     ".fkpsc-editor-field > span { font-size:.82em; font-weight:600; opacity:.72; }",
-    ".fkpsc-editor-field input, .fkpsc-editor-field select, .fkpsc-editor-field textarea { box-sizing:border-box; width:100%; color:inherit; background:var(--surface-raised); border:1px solid rgba(127,127,127,.38); border-radius:7px; }",
+    ".fkpsc-editor-field input, .fkpsc-editor-field select, .fkpsc-editor-field textarea { box-sizing:border-box; width:100%; border:1px solid var(--field-border); border-radius:7px; }",
     ".fkpsc-editor-field textarea { min-height:4.8em; resize:vertical; }",
     ".fkpsc-targets-title { display:flex; align-items:center; justify-content:space-between; gap:.5em; margin:1em 0 .55em; font-weight:700; }",
     ".fkpsc-target-edit { margin:.55em 0; padding:.8em; border:1px solid rgba(127,127,127,.28); border-radius:9px; background:var(--surface-raised); }",
@@ -217,17 +231,20 @@ function injectStyles() {
     ".fkpsc-okline .nm { flex: 1 1 12em; }",
     ".fkpsc-okline .tm { opacity: .5; font-family: monospace; font-size: .88em; }",
     ".fkpsc-meta { margin: .3em 0 1.1em; opacity: .7; line-height: 1.6; font-size: .92em; }",
-    ".fkpsc-dim { opacity: .65; }",
+    ".fkpsc-dim { color:var(--muted) !important; opacity:1; }",
     ".fkpsc-empty { opacity: .6; padding: 2em 1em; text-align: center; }",
     ".fkpsc-service-tools { display:flex; flex-wrap:wrap; gap:.45em; align-items:center; margin:.45em 0; }",
     ".fkpsc-search { flex:1 1 190px; min-width:150px; }",
     "@media (prefers-color-scheme:dark) {",
-    "  .fkpsc { --surface:#18191b; --surface-soft:#242629; --surface-raised:#202225; background:#18191b; color:#e7e9ec; }",
+    "  .fkpsc.theme-auto { --accent:#55a7ef; --surface:#15171a; --surface-soft:#24282d; --surface-raised:#1d2024; --text:#f1f4f7; --muted:#b7c0ca; --field:#101215; --field-text:#f5f7fa; --field-border:#7b8794; color-scheme:dark; }",
     "}",
     "@media (max-width:600px) {",
     "  .fkpsc { padding:.55em; border-radius:10px; }",
     "  .fkpsc-hero { padding:.85em .9em; border-radius:10px; }",
     "  .fkpsc-hero h2 { font-size:1.3em; }",
+    "  .fkpsc-theme-line { align-items:flex-start; flex-direction:column; }",
+    "  .fkpsc-theme-switch { width:100%; box-sizing:border-box; }",
+    "  .fkpsc-theme-button { flex:1 1 30%; }",
     "  .fkpsc-tabs { position:sticky; top:0; z-index:20; }",
     "  .fkpsc-tab { flex:1 1 30%; padding:.65em .35em; }",
     "  .fkpsc-card { padding:.8em; border-radius:9px; }",
@@ -1241,9 +1258,64 @@ return view.extend({
     fixTab.addEventListener("click", function () { showPage("fix"); });
     listsTab.addEventListener("click", function () { showPage("lists"); });
 
-    return E("div", { class: "cbi-map fkpsc" }, [
+    var themeChoice = "auto";
+    try {
+      var storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+      if (storedTheme === "light" || storedTheme === "dark" || storedTheme === "auto") {
+        themeChoice = storedTheme;
+      }
+    } catch (error) {
+      themeChoice = "auto";
+    }
+
+    var pageRoot = null;
+    var themeButtons = {};
+
+    function applyTheme(choice, persist) {
+      if (choice !== "light" && choice !== "dark") {
+        choice = "auto";
+      }
+      themeChoice = choice;
+      if (pageRoot) {
+        pageRoot.classList.remove("theme-auto", "theme-light", "theme-dark");
+        pageRoot.classList.add("theme-" + choice);
+      }
+      Object.keys(themeButtons).forEach(function (name) {
+        themeButtons[name].classList.toggle("active", name === choice);
+        themeButtons[name].setAttribute("aria-pressed", name === choice ? "true" : "false");
+      });
+      if (persist) {
+        try {
+          window.localStorage.setItem(THEME_STORAGE_KEY, choice);
+        } catch (error) {
+          /* Private browsing or a locked-down browser may disable storage. */
+        }
+      }
+    }
+
+    var themeSwitch = E("div", { class: "fkpsc-theme-switch", role: "group", "aria-label": "Тема интерфейса" });
+    [
+      ["auto", "Авто"],
+      ["light", "Светлая"],
+      ["dark", "Тёмная"],
+    ].forEach(function (entry) {
+      var name = entry[0];
+      var button = E("button", {
+        class: "fkpsc-theme-button",
+        type: "button",
+        "aria-pressed": "false",
+      }, entry[1]);
+      button.addEventListener("click", function () { applyTheme(name, true); });
+      themeButtons[name] = button;
+      themeSwitch.appendChild(button);
+    });
+
+    pageRoot = E("div", { class: "cbi-map fkpsc theme-" + themeChoice }, [
       E("div", { class: "fkpsc-hero" }, [
-        E("h2", {}, "Forkop Service Check"),
+        E("div", { class: "fkpsc-theme-line" }, [
+          E("h2", {}, "Forkop Service Check"),
+          themeSwitch,
+        ]),
         E("p", {}, "Проверка идёт тем же путём, что и трафик клиента: имя резолвится через dnsmasq и sing-box, " +
           "а соединение попадает в цепочку mangle_output и уходит в tproxy. Нажмите на плитку сервиса, " +
           "чтобы увидеть, на каком этапе всё сломалось — DNS, TCP, TLS или HTTP."),
@@ -1259,5 +1331,7 @@ return view.extend({
       fixPage,
       listsPage,
     ]);
+    applyTheme(themeChoice, false);
+    return pageRoot;
   },
 });
