@@ -24,6 +24,7 @@ const NETNS_VETH_HOST = "fkpsc0";
 const NETNS_VETH_PEER = "fkpsc1";
 const XHTTP_PATCH = "/usr/lib/forkop-servicecheck/xhttp_hotfix.sh";
 const ICMP_TPROXY_PATCH = "/usr/lib/forkop-servicecheck/icmp_tproxy_hotfix.sh";
+const AWG_HANDSHAKE_WAIT_SECONDS = 8;
 
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const DNS_TIMEOUT = 3;
@@ -376,6 +377,7 @@ function capabilities() {
         nc_mode,
         timeout_cmd: command_exists("timeout"),
         netns: run_quiet([ "ip", "netns", "list" ]) && command_exists("ip"),
+        awg: command_exists("awg") || command_exists("amneziawg"),
         lan_interface: interface,
         lan_address: address == null ? "" : address.address,
         lan_prefix: address == null ? 0 : address.prefix,
@@ -383,6 +385,366 @@ function capabilities() {
         forkop_running: forkop_running(),
         profiles_version: int(object_or_empty(read_json_file(profiles_file())).version || 0)
     };
+}
+
+// ---------------------------------------------------------------------------
+// AmneziaWG: импорт стандартного конфигурационного файла в UCI/network.
+// Данные проходят строгую проверку до первой записи, поэтому браузер не может
+// передать в UCI произвольную команду или перезаписать существующий интерфейс.
+// ---------------------------------------------------------------------------
+
+function awg_binary() {
+    if (command_exists("awg"))
+        return "awg";
+    if (command_exists("amneziawg"))
+        return "amneziawg";
+    return "";
+}
+
+function awg_value(config, section, key) {
+    return as_string(object_or_empty(config[section])[lc(key)]);
+}
+
+function parse_awg_config(payload) {
+    let config = { interface: {}, peer: {} };
+    let section = "";
+
+    for (let source_line in split(as_string(payload), "\n")) {
+        let line = trim(as_string(source_line));
+        if (line == "" || substr(line, 0, 1) == "#" || substr(line, 0, 1) == ";")
+            continue;
+
+        let heading = match(line, /^\[([A-Za-z]+)\]$/);
+        if (heading != null) {
+            section = lc(heading[1]);
+            if (section != "interface" && section != "peer")
+                return { error: "допускаются только секции [Interface] и [Peer]" };
+            continue;
+        }
+
+        let pair = match(line, /^([^=]+)=(.*)$/);
+        if (pair == null || section == "")
+            return { error: "некорректная строка конфигурации: " + line };
+        let key = lc(trim(pair[1]));
+        let value = trim(pair[2]);
+        if (key == "" || value == "")
+            return { error: "пустой параметр в секции [" + section + "]" };
+        if (type(config[section][key]) != "undefined")
+            return { error: "параметр " + key + " указан повторно" };
+        config[section][key] = value;
+    }
+
+    if (length(keys(config.interface)) == 0 || length(keys(config.peer)) == 0)
+        return { error: "конфигурация должна содержать [Interface] и [Peer]" };
+    return { config, error: "" };
+}
+
+function valid_awg_key(value) {
+    value = as_string(value);
+    return match(value, /^[A-Za-z0-9+\/]{42,86}={0,2}$/) != null;
+}
+
+function valid_awg_number(value) {
+    return match(as_string(value), /^[0-9]{1,10}$/) != null;
+}
+
+function valid_awg_address(value) {
+    value = trim(as_string(value));
+    // iproute2 проверит точный синтаксис IP/CIDR. Здесь отсекаем пробелы,
+    // управляющие символы и shell-разделители до передачи значения в UCI.
+    return value != "" && match(value, /^[0-9A-Fa-f:.]+\/[0-9]{1,3}$/) != null;
+}
+
+function valid_awg_ip(value) {
+    return match(trim(as_string(value)), /^[0-9A-Fa-f:.]+$/) != null;
+}
+
+function split_awg_list(value) {
+    let result = [];
+    for (let item in split(as_string(value), /[ ,]+/)) {
+        item = trim(item);
+        if (item != "")
+            push(result, item);
+    }
+    return result;
+}
+
+function valid_awg_endpoint(value) {
+    value = trim(as_string(value));
+    let matched = match(value, /^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+):([0-9]{1,5})$/);
+    return matched != null && int(matched[2]) >= 1 && int(matched[2]) <= 65535;
+}
+
+function awg_protocol_available() {
+    return fs.stat("/lib/netifd/proto/amneziawg.sh") != null;
+}
+
+function awg_package_manager() {
+    if (command_exists("opkg"))
+        return "opkg";
+    if (command_exists("apk"))
+        return "apk";
+    return "";
+}
+
+function awg_package_installed(manager, package) {
+    if (manager == "opkg")
+        return run_quiet([ "opkg", "status", package ]);
+    if (manager == "apk")
+        return run_quiet([ "apk", "info", "-e", package ]);
+    return false;
+}
+
+function awg_packages_status() {
+    let manager = awg_package_manager();
+    let tools_ready = awg_binary() != "";
+    let proto_ready = awg_protocol_available();
+    let kmod_ready = awg_package_installed(manager, "kmod-amneziawg");
+    return {
+        success: true,
+        manager,
+        tools_ready,
+        proto_ready,
+        kmod_ready,
+        ready: tools_ready && proto_ready && kmod_ready,
+        install_available: manager != "",
+        packages: [ "kmod-amneziawg", "amneziawg-tools", "luci-proto-amneziawg" ]
+    };
+}
+
+function install_awg_packages() {
+    let status = awg_packages_status();
+    if (status.ready) {
+        status.message = "пакеты AmneziaWG уже установлены";
+        write_json(status);
+        return 0;
+    }
+    if (status.manager == "") {
+        write_json({ success: false, message: "не найден opkg или apk; установите kmod-amneziawg, amneziawg-tools и luci-proto-amneziawg вручную" });
+        return 1;
+    }
+
+    let updated = capture_args([ status.manager, "update" ], true);
+    if (updated.status != 0) {
+        write_json({ success: false, message: "не удалось обновить индекс пакетов", output: substr(trim(as_string(updated.output)), 0, 2000) });
+        return 1;
+    }
+    let installed = capture_args([ status.manager, status.manager == "opkg" ? "install" : "add",
+        "kmod-amneziawg", "amneziawg-tools", "luci-proto-amneziawg" ], true);
+    let result = awg_packages_status();
+    result.success = installed.status == 0 && result.ready;
+    result.message = result.ready ? "пакеты установлены, AmneziaWG готов к созданию интерфейса" :
+        "пакетный менеджер завершился, но не все компоненты AmneziaWG обнаружены";
+    result.output = substr(trim(as_string(installed.output)), 0, 2000);
+    write_json(result);
+    return result.success ? 0 : 1;
+}
+
+function awg_endpoint_host(value) {
+    let matched = match(as_string(value), /^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+):[0-9]+$/);
+    let host = matched[1];
+    return substr(host, 0, 1) == "[" ? substr(host, 1, length(host) - 2) : host;
+}
+
+function awg_endpoint_port(value) {
+    return match(as_string(value), /:([0-9]+)$/)[1];
+}
+
+function validate_awg_config(name, version, config) {
+    if (match(as_string(name), /^[A-Za-z][A-Za-z0-9_]{0,14}$/) == null)
+        return "имя интерфейса: латинская буква, цифры и _, не более 15 символов";
+    if (version != "2.0" && version != "3.0")
+        return "выберите версию AWG 2.0 или 3.0";
+
+    let interface_keys = {
+        privatekey: true, address: true, dns: true, listenport: true, mtu: true,
+        jc: true, jmin: true, jmax: true, s1: true, s2: true, h1: true, h2: true,
+        h3: true, h4: true, i1: true, i2: true, i3: true, i4: true, i5: true
+    };
+    let peer_keys = {
+        publickey: true, presharedkey: true, allowedips: true, endpoint: true,
+        persistentkeepalive: true
+    };
+    for (let key in keys(object_or_empty(config.interface)))
+        if (!interface_keys[key])
+            return "неподдерживаемый параметр [Interface]: " + key;
+    for (let key in keys(object_or_empty(config.peer)))
+        if (!peer_keys[key])
+            return "неподдерживаемый параметр [Peer]: " + key;
+    if (!valid_awg_key(awg_value(config, "interface", "PrivateKey")))
+        return "некорректный PrivateKey в [Interface]";
+    if (!valid_awg_key(awg_value(config, "peer", "PublicKey")))
+        return "некорректный PublicKey в [Peer]";
+    if (!valid_awg_endpoint(awg_value(config, "peer", "Endpoint")))
+        return "Endpoint должен иметь вид host:port или [IPv6]:port";
+
+    let addresses = split_awg_list(awg_value(config, "interface", "Address"));
+    let allowed = split_awg_list(awg_value(config, "peer", "AllowedIPs"));
+    if (length(addresses) == 0 || length(allowed) == 0)
+        return "требуются Address в [Interface] и AllowedIPs в [Peer]";
+    for (let address in addresses)
+        if (!valid_awg_address(address))
+            return "некорректный Address: " + address;
+    for (let address in allowed)
+        if (!valid_awg_address(address))
+            return "некорректный AllowedIPs: " + address;
+    for (let dns in split_awg_list(awg_value(config, "interface", "DNS")))
+        if (!valid_awg_ip(dns))
+            return "некорректный DNS: " + dns;
+
+    let port = awg_value(config, "interface", "ListenPort");
+    let keepalive = awg_value(config, "peer", "PersistentKeepalive");
+    if (port != "" && (!valid_awg_number(port) || int(port) < 1 || int(port) > 65535))
+        return "ListenPort должен быть в диапазоне 1-65535";
+    if (keepalive != "" && (!valid_awg_number(keepalive) || int(keepalive) > 65535))
+        return "некорректный PersistentKeepalive";
+    let mtu = awg_value(config, "interface", "MTU");
+    if (mtu != "" && (!valid_awg_number(mtu) || int(mtu) < 576 || int(mtu) > 65535))
+        return "MTU должен быть в диапазоне 576-65535";
+    let preshared = awg_value(config, "peer", "PresharedKey");
+    if (preshared != "" && !valid_awg_key(preshared))
+        return "некорректный PresharedKey";
+
+    let fields = [ "Jc", "Jmin", "Jmax", "S1", "S2", "H1", "H2", "H3", "H4" ];
+    for (let field in fields) {
+        let value = awg_value(config, "interface", field);
+        if (!valid_awg_number(value))
+            return "для AWG требуется числовой параметр " + field;
+    }
+    if (int(awg_value(config, "interface", "Jmin")) > int(awg_value(config, "interface", "Jmax")))
+        return "Jmin не может быть больше Jmax";
+
+    for (let index = 1; index <= 5; index++) {
+        let value = awg_value(config, "interface", "I" + index);
+        if (version == "3.0" && !valid_awg_number(value))
+            return "для AWG 3.0 требуется числовой параметр I" + index;
+        if (version == "2.0" && value != "")
+            return "параметры I1-I5 поддерживаются только AWG 3.0";
+    }
+    return "";
+}
+
+function awg_set(section, option, value) {
+    return run_quiet([ "uci", "set", "network." + section + "." + option + "=" + as_string(value) ]);
+}
+
+function awg_add_list(section, option, value) {
+    return run_quiet([ "uci", "add_list", "network." + section + "." + option + "=" + as_string(value) ]);
+}
+
+function awg_latest_handshake(binary, interface) {
+    let output = capture_args([ binary, "show", interface, "latest-handshakes" ], false).output;
+    for (let line in split(as_string(output), "\n")) {
+        let fields = words(line);
+        if (length(fields) >= 2 && valid_awg_number(fields[1]))
+            return int(fields[1]);
+    }
+    return 0;
+}
+
+function create_awg_interface(name, requested_version, payload) {
+    payload = as_string(payload);
+    if (length(payload) < 20 || length(payload) > 16384) {
+        write_json({ success: false, message: "размер конфигурации должен быть от 20 байт до 16 КиБ" });
+        return 1;
+    }
+    if (awg_binary() == "") {
+        write_json({ success: false, message: "не найден бинарник AWG. Установите пакет amneziawg-tools." });
+        return 1;
+    }
+    if (!awg_package_installed(awg_package_manager(), "kmod-amneziawg")) {
+        write_json({ success: false, message: "не найден пакет kmod-amneziawg" });
+        return 1;
+    }
+    if (!awg_protocol_available()) {
+        write_json({ success: false, message: "не найден netifd-протокол amneziawg. Установите пакет amneziawg-proto." });
+        return 1;
+    }
+
+    let parsed = parse_awg_config(payload);
+    if (parsed.error != "") {
+        write_json({ success: false, message: parsed.error });
+        return 1;
+    }
+    let version = as_string(requested_version);
+    if (version == "auto")
+        version = awg_value(parsed.config, "interface", "I1") != "" ? "3.0" : "2.0";
+    let validation = validate_awg_config(name, version, parsed.config);
+    if (validation != "") {
+        write_json({ success: false, message: validation });
+        return 1;
+    }
+    if (uci_get("network." + name) != "") {
+        write_json({ success: false, message: "интерфейс " + name + " уже существует; существующая конфигурация не изменена" });
+        return 1;
+    }
+
+    let interface = object_or_empty(parsed.config.interface);
+    let peer = object_or_empty(parsed.config.peer);
+    let created = run_quiet([ "uci", "set", "network." + name + "=interface" ]) &&
+        awg_set(name, "proto", "amneziawg") &&
+        awg_set(name, "private_key", interface.privatekey) &&
+        awg_set(name, "awg_jc", interface.jc) &&
+        awg_set(name, "awg_jmin", interface.jmin) &&
+        awg_set(name, "awg_jmax", interface.jmax) &&
+        awg_set(name, "awg_s1", interface.s1) && awg_set(name, "awg_s2", interface.s2) &&
+        awg_set(name, "awg_h1", interface.h1) && awg_set(name, "awg_h2", interface.h2) &&
+        awg_set(name, "awg_h3", interface.h3) && awg_set(name, "awg_h4", interface.h4);
+
+    if (version == "3.0")
+        for (let index = 1; index <= 5; index++)
+            created = created && awg_set(name, "awg_i" + index, interface["i" + index]);
+    if (interface.listenport != "")
+        created = created && awg_set(name, "listen_port", interface.listenport);
+    if (interface.mtu != "" && valid_awg_number(interface.mtu))
+        created = created && awg_set(name, "mtu", interface.mtu);
+    for (let address in split_awg_list(interface.address))
+        created = created && awg_add_list(name, "addresses", address);
+    for (let dns in split_awg_list(interface.dns))
+        created = created && awg_add_list(name, "dns", dns);
+
+    let peer_section = "wireguard_" + name;
+    created = created && run_quiet([ "uci", "set", "network." + peer_section + "=wireguard_" + name ]) &&
+        awg_set(peer_section, "public_key", peer.publickey) &&
+        awg_set(peer_section, "endpoint_host", awg_endpoint_host(peer.endpoint)) &&
+        awg_set(peer_section, "endpoint_port", awg_endpoint_port(peer.endpoint)) &&
+        awg_set(peer_section, "route_allowed_ips", "1");
+    if (peer.presharedkey != "")
+        created = created && awg_set(peer_section, "preshared_key", peer.presharedkey);
+    if (peer.persistentkeepalive != "")
+        created = created && awg_set(peer_section, "persistent_keepalive", peer.persistentkeepalive);
+    for (let cidr in split_awg_list(peer.allowedips))
+        created = created && awg_add_list(peer_section, "allowed_ips", cidr);
+
+    if (!created || !run_quiet([ "uci", "commit", "network" ])) {
+        run_quiet([ "uci", "delete", "network." + peer_section ]);
+        run_quiet([ "uci", "delete", "network." + name ]);
+        run_quiet([ "uci", "commit", "network" ]);
+        write_json({ success: false, message: "не удалось записать UCI-конфигурацию; изменения отменены" });
+        return 1;
+    }
+
+    run_quiet([ "ifup", name ]);
+    let binary = awg_binary();
+    let handshake = 0;
+    for (let second = 0; second < AWG_HANDSHAKE_WAIT_SECONDS; second++) {
+        handshake = awg_latest_handshake(binary, name);
+        if (handshake > 0)
+            break;
+        sleep(1);
+    }
+    let link_up = run_quiet([ "ip", "link", "show", "dev", name ]);
+    write_json({
+        success: true,
+        interface: name,
+        version,
+        link_up,
+        handshake: handshake > 0,
+        latest_handshake: handshake,
+        message: handshake > 0 ? "интерфейс создан, handshake с peer получен" :
+            (link_up ? "интерфейс создан и поднят, но handshake с peer за 8 секунд не получен" : "UCI-конфигурация создана, но интерфейс не поднялся")
+    });
+    return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -1576,6 +1938,14 @@ else if (mode == "profiles-save")
     exit(profiles_save(ARGV[1]));
 else if (mode == "profiles-reset")
     exit(profiles_reset());
+else if (mode == "awg-packages") {
+    write_json(awg_packages_status());
+    exit(0);
+}
+else if (mode == "awg-install-packages")
+    exit(install_awg_packages());
+else if (mode == "awg-create")
+    exit(create_awg_interface(ARGV[1], ARGV[2], ARGV[3]));
 else if (mode == "custom") {
     let result = custom_check(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
     write_json(result);

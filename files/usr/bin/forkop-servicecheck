@@ -25,6 +25,10 @@ Available commands:
     profiles-get            Показать активный список проверок
     profiles-save JSON      Проверить и сохранить пользовательский список
     profiles-reset          Вернуться к встроенному списку
+    awg-create NAME VERSION CONFIG
+                            Создать интерфейс AmneziaWG и проверить handshake
+    awg-packages            Показать готовность пакетов AmneziaWG
+    awg-install-packages    Установить недостающие пакеты AmneziaWG
     netns_teardown          Снести временный network namespace
 
 IDS  - список id сервисов через запятую либо 'all'
@@ -54,11 +58,14 @@ command -v ucode >/dev/null 2>&1 || {
 }
 
 case "$COMMAND" in
-    list|capabilities|fixes|cleanup|profiles-get|profiles-reset)
+    list|capabilities|fixes|cleanup|profiles-get|profiles-reset|awg-packages|awg-install-packages)
         exec ucode -L "$LIB_DIR" "$ENGINE" "$COMMAND"
         ;;
     fix|status|profiles-save)
         exec ucode -L "$LIB_DIR" "$ENGINE" "$COMMAND" "${2:-}"
+        ;;
+    awg-create)
+        exec ucode -L "$LIB_DIR" "$ENGINE" awg-create "${2:-}" "${3:-}" "${4:-}"
         ;;
     custom)
         exec ucode -L "$LIB_DIR" "$ENGINE" custom "${2:-}" "${3:-}" "${4:-}" "${5:-}"

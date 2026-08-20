@@ -17,7 +17,7 @@
  */
 
 var BIN = "/usr/bin/forkop-servicecheck";
-var UI_VERSION = "1.3.1"; // Filename stays v111 for compatibility with existing LuCI menu entries.
+var UI_VERSION = "1.4.1"; // Filename stays v111 for compatibility with existing LuCI menu entries.
 var THEME_STORAGE_KEY = "forkop-servicecheck-theme";
 var POLL_INTERVAL_MS = 1500;
 var JOB_TIMEOUT_MS = 10 * 60 * 1000;
@@ -157,6 +157,9 @@ function injectStyles() {
     ".fkpsc-custom-pill.ok { color:var(--ok); background:rgba(47,158,68,.13); }",
     ".fkpsc-custom-pill.warn { color:#9a6500; background:rgba(232,163,61,.16); }",
     ".fkpsc-custom-pill.err { color:var(--err); background:rgba(224,49,49,.13); }",
+    ".fkpsc-awg-grid { display:grid; grid-template-columns:minmax(10em,.35fr) minmax(12em,.45fr) 1fr; gap:.75em; margin:.55em 0 .75em; }",
+    ".fkpsc-awg-config { box-sizing:border-box; width:100%; min-height:17em; resize:vertical; font-family:monospace; font-size:.9em; line-height:1.4; }",
+    ".fkpsc-awg-result { margin-top:.8em; }",
 
     /* --- сводка --- */
     ".fkpsc-summary { display: flex; flex-wrap: wrap; gap: .5em; margin: 0 0 1em; }",
@@ -247,6 +250,7 @@ function injectStyles() {
     "  .fkpsc-theme-button { flex:1 1 30%; }",
     "  .fkpsc-tabs { position:sticky; top:0; z-index:20; }",
     "  .fkpsc-tab { flex:1 1 30%; padding:.65em .35em; }",
+    "  .fkpsc-awg-grid { grid-template-columns:1fr; }",
     "  .fkpsc-card { padding:.8em; border-radius:9px; }",
     "  .fkpsc-editor-grid { grid-template-columns:1fr; }",
     "  .fkpsc-editor-field.wide { grid-column:auto; }",
@@ -588,6 +592,9 @@ return view.extend({
       callBin(["profiles-get"]).catch(function () {
         return null;
       }),
+      callBin(["awg-packages"]).catch(function () {
+        return null;
+      }),
     ]);
   },
 
@@ -598,6 +605,8 @@ return view.extend({
     var catalogue = data[1];
     var fixes = (data[2] && data[2].fixes) || [];
     var profilesData = data[3];
+    var awgPackages = data[4] || { ready: false, install_available: false, packages: [] };
+    var awgReady = !!awgPackages.ready;
     var profilesDraft = profilesData && profilesData.config ?
       JSON.parse(JSON.stringify(profilesData.config)) : { version: 2, profiles: [] };
     if (!Array.isArray(profilesDraft.profiles)) {
@@ -953,7 +962,107 @@ return view.extend({
       notes.push("Режим «от имени клиента» недоступен: ip netns не поддерживается этой прошивкой.");
     }
 
+    var awgNameInput = E("input", {
+      type: "text", class: "cbi-input-text", value: "awg0", maxlength: "15",
+      autocomplete: "off", spellcheck: "false",
+    });
+    var awgVersionSelect = E("select", { class: "cbi-input-select" }, [
+      E("option", { value: "auto", selected: "" }, "Авто"),
+      E("option", { value: "2.0" }, "AWG 2.0"),
+      E("option", { value: "3.0" }, "AWG 3.0"),
+    ]);
+    var awgConfigInput = E("textarea", {
+      class: "cbi-input-text fkpsc-awg-config",
+      placeholder: "[Interface]\nPrivateKey = ...\nAddress = 10.0.0.2/32\nJc = ...\nJmin = ...\nJmax = ...\nS1 = ...\nS2 = ...\nH1 = ...\nH2 = ...\nH3 = ...\nH4 = ...\n\n[Peer]\nPublicKey = ...\nAllowedIPs = 0.0.0.0/0\nEndpoint = host:port",
+      spellcheck: "false",
+    });
+    var awgCreateButton = E("button", {
+      class: "cbi-button cbi-button-action important", type: "button",
+      disabled: awgReady ? null : "",
+    }, "Создать и проверить");
+    var awgResultNode = E("div", { class: "fkpsc-custom-result fkpsc-awg-result" });
+    var awgInstallButton = E("button", {
+      class: "cbi-button cbi-button-action", type: "button",
+      disabled: awgPackages.install_available ? null : "",
+    }, "Установить пакеты");
+    var awgPackageNode = E("div", {});
+
+    function renderAwgPackages(result) {
+      awgPackages = result || awgPackages;
+      awgReady = !!awgPackages.ready;
+      awgCreateButton.disabled = !awgReady;
+      awgInstallButton.disabled = !awgPackages.install_available || awgReady;
+      if (awgReady) {
+        awgPackageNode.replaceChildren();
+        return;
+      }
+      var packages = Array.isArray(awgPackages.packages) && awgPackages.packages.length ?
+        awgPackages.packages.join(", ") : "kmod-amneziawg, amneziawg-tools, luci-proto-amneziawg";
+      awgPackageNode.replaceChildren(E("div", { class: "fkpsc-note" }, [
+        E("span", {}, "Отсутствуют компоненты AmneziaWG: " + packages + ". "),
+        awgPackages.install_available ? awgInstallButton : E("span", {}, "Поддерживаемый пакетный менеджер не найден."),
+      ]));
+    }
+
+    function showAwgResult(state, title, detail) {
+      awgResultNode.replaceChildren(E("div", { class: "fkpsc-custom-head" }, [
+        E("span", { class: "fkpsc-custom-title" }, title),
+        E("span", { class: "fkpsc-custom-pill " + state }, state === "ok" ? "готово" : state === "err" ? "ошибка" : "проверка"),
+      ]), E("div", {}, detail));
+      awgResultNode.className = "fkpsc-custom-result fkpsc-awg-result state-" + (state === "ok" ? "success" : state === "err" ? "error" : "warning");
+    }
+
+    function createAwgInterface() {
+      if (awgCreateButton.disabled) return;
+      var name = awgNameInput.value.trim();
+      var config = awgConfigInput.value.trim();
+      if (!name || !config) {
+        showAwgResult("err", "Конфигурация не отправлена", "Укажите имя интерфейса и вставьте конфигурацию AWG.");
+        return;
+      }
+      awgCreateButton.disabled = true;
+      awgCreateButton.textContent = "Создаю и проверяю...";
+      showAwgResult("wait", "Создание интерфейса", "Проверяем конфигурацию, применяем UCI и ждём handshake с peer.");
+      callBin(["awg-create", name, awgVersionSelect.value, config]).then(function (result) {
+        if (!result.success) {
+          showAwgResult("err", "Интерфейс не создан", result.message || "Проверка конфигурации не прошла.");
+          return;
+        }
+        var detail = result.message || "Интерфейс создан.";
+        detail += result.link_up ? " Link поднят." : " Link не поднят.";
+        detail += result.handshake ? " Handshake подтверждён." : " Handshake не подтверждён.";
+        showAwgResult(result.handshake && result.link_up ? "ok" : "wait", "AWG " + result.version + " · " + result.interface, detail);
+      }).catch(function (error) {
+        showAwgResult("err", "Ошибка выполнения", error.message || "Не удалось создать интерфейс.");
+      }).finally(function () {
+        awgCreateButton.disabled = !awgReady;
+        awgCreateButton.textContent = "Создать и проверить";
+      });
+    }
+
+    awgCreateButton.addEventListener("click", createAwgInterface);
+    awgInstallButton.addEventListener("click", function () {
+      if (awgInstallButton.disabled || !window.confirm("Обновить индекс пакетов и установить компоненты AmneziaWG?")) {
+        return;
+      }
+      awgInstallButton.disabled = true;
+      awgInstallButton.textContent = "Устанавливаю...";
+      showAwgResult("wait", "Установка пакетов", "Обновляем индекс пакетов и устанавливаем компоненты AmneziaWG.");
+      callBin(["awg-install-packages"]).then(function (result) {
+        renderAwgPackages(result);
+        showAwgResult(result.ready ? "ok" : "err", result.ready ? "Пакеты установлены" : "Пакеты не готовы",
+          result.message || "Проверьте вывод пакетного менеджера.");
+      }).catch(function (error) {
+        showAwgResult("err", "Установка не выполнена", error.message || "Не удалось установить пакеты.");
+      }).finally(function () {
+        awgInstallButton.textContent = "Установить пакеты";
+        awgInstallButton.disabled = !awgPackages.install_available || awgReady;
+      });
+    });
+    renderAwgPackages(awgPackages);
+
     var checkTab = E("button", { class: "fkpsc-tab active", type: "button", role: "tab", "aria-selected": "true" }, "Проверка сервисов");
+    var awgTab = E("button", { class: "fkpsc-tab", type: "button", role: "tab", "aria-selected": "false" }, "AmneziaWG");
     var fixTab = E("button", { class: "fkpsc-tab", type: "button", role: "tab", "aria-selected": "false" }, "Фикс Forkop");
     var listsTab = E("button", { class: "fkpsc-tab", type: "button", role: "tab", "aria-selected": "false" }, "Списки");
     var checkPage = E("div", { class: "fkpsc-page active" }, [
@@ -1003,6 +1112,19 @@ return view.extend({
       tilesNode,
     ]);
     var fixPage = E("div", { class: "fkpsc-page" }, [maintenancePanel]);
+    var awgPage = E("div", { class: "fkpsc-page" }, [
+      E("div", { class: "fkpsc-card" }, [
+        E("h3", {}, "AmneziaWG"),
+        E("div", { class: "fkpsc-awg-grid" }, [
+          E("label", { class: "fkpsc-editor-field" }, [E("span", {}, "Имя интерфейса"), awgNameInput]),
+          E("label", { class: "fkpsc-editor-field" }, [E("span", {}, "Версия"), awgVersionSelect]),
+          E("div", { class: "fkpsc-editor-field" }, [E("span", {}, "Действие"), awgCreateButton]),
+        ]),
+        E("label", { class: "fkpsc-editor-field" }, [E("span", {}, "Конфигурация"), awgConfigInput]),
+        awgPackageNode,
+        awgResultNode,
+      ]),
+    ]);
     var profilesCardsNode = E("div", {});
     var saveProfilesButton = E("button", { class: "cbi-button cbi-button-action important", type: "button" }, "Сохранить список");
     var resetProfilesButton = E("button", { class: "cbi-button cbi-button-negative", type: "button" }, "Вернуть встроенный");
@@ -1242,19 +1364,24 @@ return view.extend({
     function showPage(name) {
       var showFix = name === "fix";
       var showLists = name === "lists";
-      var showCheck = !showFix && !showLists;
+      var showAwg = name === "awg";
+      var showCheck = !showFix && !showLists && !showAwg;
       checkTab.classList.toggle("active", showCheck);
+      awgTab.classList.toggle("active", showAwg);
       fixTab.classList.toggle("active", showFix);
       listsTab.classList.toggle("active", showLists);
       checkTab.setAttribute("aria-selected", showCheck ? "true" : "false");
+      awgTab.setAttribute("aria-selected", showAwg ? "true" : "false");
       fixTab.setAttribute("aria-selected", showFix ? "true" : "false");
       listsTab.setAttribute("aria-selected", showLists ? "true" : "false");
       checkPage.classList.toggle("active", showCheck);
+      awgPage.classList.toggle("active", showAwg);
       fixPage.classList.toggle("active", showFix);
       listsPage.classList.toggle("active", showLists);
     }
 
     checkTab.addEventListener("click", function () { showPage("check"); });
+    awgTab.addEventListener("click", function () { showPage("awg"); });
     fixTab.addEventListener("click", function () { showPage("fix"); });
     listsTab.addEventListener("click", function () { showPage("lists"); });
 
@@ -1326,8 +1453,9 @@ return view.extend({
           E("span", { class: "fkpsc-badge" }, capabilities.netns ? "netns доступен" : "только роутер"),
         ]),
       ]),
-      E("div", { class: "fkpsc-tabs", role: "tablist" }, [checkTab, fixTab, listsTab]),
+      E("div", { class: "fkpsc-tabs", role: "tablist" }, [checkTab, awgTab, fixTab, listsTab]),
       checkPage,
+      awgPage,
       fixPage,
       listsPage,
     ]);

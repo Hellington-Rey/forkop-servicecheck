@@ -19,6 +19,7 @@ LuCI-модуль для OpenWrt, который проверяет доступ
 - Кнопка **«Фикс ping/ICMP для правил подсетей»**: priority-правила TProxy ограничиваются TCP/UDP, чтобы ICMP не получал proxy-маркер.
 - Расширяемая панель **«Фиксы Forkop»**: новые исправления добавляются в whitelist-реестр backend и не позволяют запускать произвольные команды из браузера.
 - Двусторонние UDP-проверки через DNS в составе обычной проверки сервисов.
+- Вкладка **AmneziaWG**: проверка `kmod-amneziawg`, `amneziawg-tools` и `luci-proto-amneziawg`, предложение установить недостающие пакеты, создание интерфейса AWG 2.0/3.0 из конфигурационного файла одной кнопкой, валидация полей и проверка link/handshake с peer.
 
 ## Как это работает
 
@@ -36,13 +37,13 @@ LuCI → forkop-servicecheck → probe.uc
 Для OpenWrt с opkg:
 
 ```sh
-opkg install luci-app-forkop-servicecheck_1.3.1-r1_all.ipk
+opkg install luci-app-forkop-servicecheck_1.4.1-r1_all.ipk
 ```
 
 Для OpenWrt с apk:
 
 ```sh
-apk add --allow-untrusted ./luci-app-forkop-servicecheck-1.3.1-r1.apk
+apk add --allow-untrusted ./luci-app-forkop-servicecheck-1.4.1-r1.apk
 ```
 
 Установка без пакетного менеджера:

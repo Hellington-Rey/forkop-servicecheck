@@ -43,6 +43,16 @@ PROFILES_OUTPUT="$(run_wrapper profiles-save "$PROFILES_JSON")"
 [ "$(printf '%s\n' "$PROFILES_OUTPUT" | tail -n 2 | head -n 1)" = "profiles-save" ]
 [ "$(printf '%s\n' "$PROFILES_OUTPUT" | tail -n 1)" = "$PROFILES_JSON" ]
 
+AWG_CONFIG='[Interface] PrivateKey = test [Peer] PublicKey = test'
+AWG_OUTPUT="$(run_wrapper awg-create awg0 3.0 "$AWG_CONFIG")"
+printf '%s\n' "$AWG_OUTPUT" | grep -Fxq -- 'awg-create'
+printf '%s\n' "$AWG_OUTPUT" | grep -Fxq -- 'awg0'
+printf '%s\n' "$AWG_OUTPUT" | grep -Fxq -- '3.0'
+printf '%s\n' "$AWG_OUTPUT" | grep -Fxq -- "$AWG_CONFIG"
+
+[ "$(run_wrapper awg-packages | tail -n 1)" = "awg-packages" ]
+[ "$(run_wrapper awg-install-packages | tail -n 1)" = "awg-install-packages" ]
+
 if run_wrapper unknown >/dev/null 2>&1; then
     echo "ERROR: unknown command must fail" >&2
     exit 1
